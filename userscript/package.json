@@ -1,0 +1,17 @@
+{
+  "name": "pvzhtbot-mod",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Client-side mod for pvzhtbot.com — core loader, plugin manager, settings UI (no feature plugins yet)",
+  "type": "module",
+  "scripts": {
+    "build": "node build.js",
+    "watch": "node build.js --watch",
+    "serve": "node dev-server.js",
+    "dev": "concurrently -n build,serve -c green,cyan \"npm:watch\" \"npm:serve\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0",
+    "esbuild": "^0.24.0"
+  }
+}
