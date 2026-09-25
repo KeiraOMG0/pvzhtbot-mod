@@ -11,7 +11,7 @@
 const DEV_SERVER_ORIGIN = 'http://127.0.0.1:8787';
 const POLL_INTERVAL_MS = 1500;
 
-function startDevReloadWatcher(log) {
+function startDevReloadWatcher(log, onDevModeDetected) {
   let currentBuildId = null;
   let everConnected = false;
 
@@ -29,6 +29,11 @@ function startDevReloadWatcher(log) {
     if (!everConnected) {
       everConnected = true;
       log(`dev-reload watcher connected (build ${buildId})`);
+      // Running against the local dev server means this build was never
+      // published to GitHub, so comparing it against dist/build-id.txt
+      // there would be meaningless noise (see update-checker/index.js) —
+      // tell whoever's listening to skip that check entirely.
+      onDevModeDetected?.();
     }
 
     if (currentBuildId === null) {

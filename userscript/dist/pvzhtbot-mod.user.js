@@ -11,7 +11,7 @@
 // @downloadURL  https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/pvzhtbot-mod.user.js
 // ==/UserScript==
 
-var __PVZHTBOT_MOD_BUILD_ID__ = "1790306110767";
+var __PVZHTBOT_MOD_BUILD_ID__ = "1790306356729";
 (() => {
   // src/api/site-api.js
   var PvzhtbotApiError = class extends Error {
@@ -591,7 +591,7 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1790306110767";
   // src/core/dev-reload.js
   var DEV_SERVER_ORIGIN = "http://127.0.0.1:8787";
   var POLL_INTERVAL_MS = 1500;
-  function startDevReloadWatcher(log2) {
+  function startDevReloadWatcher(log2, onDevModeDetected) {
     let currentBuildId2 = null;
     let everConnected = false;
     async function poll() {
@@ -606,6 +606,7 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1790306110767";
       if (!everConnected) {
         everConnected = true;
         log2(`dev-reload watcher connected (build ${buildId})`);
+        onDevModeDetected?.();
       }
       if (currentBuildId2 === null) {
         currentBuildId2 = buildId;
@@ -1773,6 +1774,7 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1790306110767";
   // src/plugins/update-checker/index.js
   var BUILD_ID_URL = "https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/build-id.txt";
   var INSTALL_URL = "https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/pvzhtbot-mod.user.js";
+  var DEV_SERVER_BUILD_ID_URL = "http://127.0.0.1:8787/build-id";
   var CHECK_INTERVAL_MS = 60 * 60 * 1e3;
   var DISMISSED_KEY_PREFIX = "pvzhtbot-mod-update-dismissed-";
   var BANNER_ID = "pvzhtbot-update-banner";
@@ -1864,27 +1866,39 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1790306110767";
       return false;
     }
   }
-  async function checkOnce(log2) {
+  async function isRunningAgainstDevServer() {
+    try {
+      const res = await fetch(DEV_SERVER_BUILD_ID_URL, { cache: "no-store" });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+  async function checkOnce(context) {
+    if (context.isDevMode?.() || await isRunningAgainstDevServer()) {
+      document.getElementById(BANNER_ID)?.remove();
+      return;
+    }
     const running = currentBuildId();
     if (!running) return;
     try {
       const latest = await fetchLatestBuildId();
       if (latest && latest !== running && !wasDismissed(latest)) {
-        showBanner(latest, log2);
+        showBanner(latest, context.log);
       }
     } catch (err) {
-      log2(`[update-checker] check failed: ${err.message}`, "error");
+      context.log(`[update-checker] check failed: ${err.message}`, "error");
     }
   }
   var updateCheckerPlugin = {
     id: "update-checker",
     name: "Update Checker",
-    description: "Checks GitHub for a newer build and shows a dashboard notice if this install is out of date. Always on.",
+    description: "Checks GitHub for a newer build and shows a dashboard notice if this install is out of date. Always on (skipped automatically while running via the local dev server).",
     defaultEnabled: true,
     required: true,
     async init(context) {
-      checkOnce(context.log);
-      const intervalId = setInterval(() => checkOnce(context.log), CHECK_INTERVAL_MS);
+      checkOnce(context);
+      const intervalId = setInterval(() => checkOnce(context), CHECK_INTERVAL_MS);
       return () => {
         clearInterval(intervalId);
         document.getElementById(BANNER_ID)?.remove();
@@ -1905,7 +1919,8 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1790306110767";
     const settings = new SettingsStore();
     const api = new PvzhtbotApi();
     const backend = new BackendClient({ baseUrl: settings.get("backendUrl", null) });
-    const context = { api, backend, settings, log };
+    let devModeDetected = false;
+    const context = { api, backend, settings, log, isDevMode: () => devModeDetected };
     const pluginManager = new PluginManager({ settings, context });
     pluginManager.register(updateCheckerPlugin);
     pluginManager.register(collectionCompletionPlugin);
@@ -1917,7 +1932,9 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1790306110767";
     const panel = createSettingsPanel(pluginManager);
     mountDashboardCard(() => panel.open());
     await pluginManager.startEnabledPlugins();
-    startDevReloadWatcher(log);
+    startDevReloadWatcher(log, () => {
+      devModeDetected = true;
+    });
     log("loader ready");
     return { api, backend, settings, pluginManager };
   }

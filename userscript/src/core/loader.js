@@ -36,7 +36,13 @@ async function boot() {
   const api = new PvzhtbotApi();
   const backend = new BackendClient({ baseUrl: settings.get('backendUrl', null) });
 
-  const context = { api, backend, settings, log };
+  // Set true the moment the dev-reload watcher confirms a local dev
+  // server is running (see startDevReloadWatcher below). Exposed as a
+  // live getter, not a snapshot, since that confirmation can land after
+  // some plugins have already started - update-checker reads this on
+  // every periodic check, not just once at init.
+  let devModeDetected = false;
+  const context = { api, backend, settings, log, isDevMode: () => devModeDetected };
   const pluginManager = new PluginManager({ settings, context });
 
   pluginManager.register(updateCheckerPlugin);
@@ -55,7 +61,9 @@ async function boot() {
 
   await pluginManager.startEnabledPlugins();
 
-  startDevReloadWatcher(log);
+  startDevReloadWatcher(log, () => {
+    devModeDetected = true;
+  });
 
   log('loader ready');
   return { api, backend, settings, pluginManager };

@@ -25,6 +25,7 @@ const BUILD_ID_URL =
   'https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/build-id.txt';
 const INSTALL_URL =
   'https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/pvzhtbot-mod.user.js';
+const DEV_SERVER_BUILD_ID_URL = 'http://127.0.0.1:8787/build-id';
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // once an hour is plenty for a manual-install userscript
 const DISMISSED_KEY_PREFIX = 'pvzhtbot-mod-update-dismissed-';
 
@@ -133,19 +134,41 @@ function wasDismissed(buildId) {
   }
 }
 
-async function checkOnce(log) {
+// Running against the local dev server (npm run dev) means this build was
+// never published to GitHub, so it will ALWAYS differ from
+// dist/build-id.txt there - that comparison is meaningless noise during
+// active development, not a real "you're out of date" signal. Probed
+// directly (same URL dev-reload.js polls) rather than trusting
+// context.isDevMode(), which is only set after dev-reload.js's own first
+// poll resolves - a plain flag read here could race ahead of that on the
+// very first check.
+async function isRunningAgainstDevServer() {
+  try {
+    const res = await fetch(DEV_SERVER_BUILD_ID_URL, { cache: 'no-store' });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function checkOnce(context) {
+  if (context.isDevMode?.() || (await isRunningAgainstDevServer())) {
+    document.getElementById(BANNER_ID)?.remove();
+    return;
+  }
+
   const running = currentBuildId();
   if (!running) return; // no build id embedded (shouldn't happen outside dev eval contexts)
 
   try {
     const latest = await fetchLatestBuildId();
     if (latest && latest !== running && !wasDismissed(latest)) {
-      showBanner(latest, log);
+      showBanner(latest, context.log);
     }
   } catch (err) {
     // Network hiccup or GitHub rate limit - not worth surfacing to the
     // user, this is a best-effort background check.
-    log(`[update-checker] check failed: ${err.message}`, 'error');
+    context.log(`[update-checker] check failed: ${err.message}`, 'error');
   }
 }
 
@@ -153,13 +176,13 @@ const updateCheckerPlugin = {
   id: 'update-checker',
   name: 'Update Checker',
   description:
-    'Checks GitHub for a newer build and shows a dashboard notice if this install is out of date. Always on.',
+    'Checks GitHub for a newer build and shows a dashboard notice if this install is out of date. Always on (skipped automatically while running via the local dev server).',
   defaultEnabled: true,
   required: true,
 
   async init(context) {
-    checkOnce(context.log);
-    const intervalId = setInterval(() => checkOnce(context.log), CHECK_INTERVAL_MS);
+    checkOnce(context);
+    const intervalId = setInterval(() => checkOnce(context), CHECK_INTERVAL_MS);
 
     return () => {
       clearInterval(intervalId);
