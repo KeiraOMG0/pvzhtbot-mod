@@ -1,9 +1,9 @@
-# userplugins/
+# src/userplugins/
 
 Drop your own plugins here. Each plugin gets its own folder:
 
 ```
-userplugins/
+src/userplugins/
 ├── manifest.js          <- registers your plugins with the loader (edit this)
 ├── README.md             <- this file
 └── my-plugin/
@@ -14,7 +14,7 @@ userplugins/
 
 ## Minimal plugin
 
-`userplugins/my-plugin/index.js`:
+`src/userplugins/my-plugin/index.js`:
 
 ```js
 export const myPlugin = {
@@ -26,7 +26,7 @@ export const myPlugin = {
   async init(context) {
     // context = { api, backend, settings, log }
     // context.api is the confirmed Site API wrapper - see
-    // ../src/api/site-api.js for every method available (read-only calls
+    // ../api/site-api.js for every method available (read-only calls
     // like getMyCards()/getAllCardInfo()/getAllDecklists(), plus the one
     // confirmed write, setCardQuantity(), and addCard()/addCardsWithRateLimit()).
     //
@@ -39,7 +39,7 @@ export const myPlugin = {
 };
 ```
 
-Then register it in `userplugins/manifest.js`:
+Then register it in `src/userplugins/manifest.js`:
 
 ```js
 import { myPlugin } from './my-plugin/index.js';
@@ -56,8 +56,8 @@ If your plugin builds on another plugin's functionality, import from that
 plugin's folder directly - it's just a normal ES module:
 
 ```js
-// userplugins/my-extension/index.js
-import { someHelper } from '../../src/plugins/collection-completion/index.js';
+// src/userplugins/my-extension/index.js
+import { someHelper } from '../plugins/collection-completion/index.js';
 // or, for another userplugin:
 import { sharedThing } from '../shared-base-plugin/index.js';
 ```
@@ -70,11 +70,20 @@ than reaching into a plugin's private internals).
 ## What NOT to do
 
 - Don't call unconfirmed/inferred API endpoints without checking
-  `../../site-research/docs/api.md` first for their actual status.
+  `../../../site-research/docs/api.md` first for their actual status.
 - Don't perform bulk writes (loops of add/remove calls) without your own
   explicit rate limiting - see `addCardsWithRateLimit()` in the API
   wrapper for the pattern this project uses.
 - Don't assume `context.backend` is configured - it throws a clear error
-  if called with no backend URL set (see `../src/api/backend-client.js`).
+  if called with no backend URL set (see `../api/backend-client.js`).
   No backend exists yet; this is a seam for future use, not something
   currently available.
+
+## Built-in plugins that are always on
+
+`update-checker` (in `src/plugins/update-checker/`) is a required,
+always-enabled built-in plugin — it doesn't appear as a toggle in the
+settings panel, it just runs. See its own file for what it does. Your
+user plugins are never forced on like this; `defaultEnabled` is only ever
+a *default*, and the user can toggle any user/built-in plugin except
+`update-checker` off from settings.

@@ -9,8 +9,8 @@ credentials ever touched by the script.
 ## What it does
 
 Once installed, a **"Mod Settings"** card appears on your `/dashboard`
-alongside the site's own cards. From there you can enable/disable each
-plugin. Three ship by default:
+alongside the site's own cards. From there you can enable/disable most
+plugins (one, Update Checker, is required and always on):
 
 - **Collection Completion Tracker** — on `/dashboard/card-manager`, shows
   what % of all normal cards you own, plus a separate **4x-playset
@@ -25,6 +25,10 @@ plugin. Three ship by default:
 - **Hero Reference** — makes the site's hero/superpower data actually
   searchable (the site's own `/heroinfo` page is just a static image grid).
   Search by hero name, superpower name, or any word in an effect's text.
+- **Update Checker** *(required, always on)* — checks GitHub hourly for a
+  newer build and shows a dismissible banner if this install is out of
+  date. Works alongside Tampermonkey's own native update mechanism
+  (`@updateURL`/`@downloadURL` in the userscript header).
 
 Everything is read-only against your account — the mod never adds,
 removes, or changes any card, deck, or profile data on its own. (A manual
@@ -54,6 +58,10 @@ the ready-to-install bundle.
   the source of truth the userscript's API wrapper is built against —
   every endpoint the mod calls was observed in a live capture first, never
   guessed.
+- **`dev/`** — paste-into-browser-console debug scripts for diagnosing
+  API/site changes quickly (read-only shape snapshots, a completion-math
+  cross-check, a net-zero PATCH test) without needing a full research/build
+  cycle. See `dev/README.md`.
 
 ## Development
 

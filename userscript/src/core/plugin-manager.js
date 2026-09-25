@@ -7,6 +7,9 @@
 //     name: 'Human-readable name',
 //     description: 'One line, shown in the settings panel.',
 //     defaultEnabled: false,
+//     required: false,             // optional: true = always on, cannot
+//                                   // be disabled, no checkbox in settings
+//                                   // (see src/plugins/update-checker/)
 //     init(context): called once when the plugin is enabled (page load
 //       if already enabled, or immediately on toggle-on). May return a
 //       teardown function.
@@ -43,11 +46,13 @@ class PluginManager {
       description: p.description || '',
       enabled: this.isEnabled(p.id),
       active: this._active.has(p.id),
+      required: Boolean(p.required),
     }));
   }
 
   isEnabled(pluginId) {
     const plugin = this._plugins.get(pluginId);
+    if (plugin?.required) return true;
     const defaultEnabled = plugin ? Boolean(plugin.defaultEnabled) : false;
     return this.settings.isPluginEnabled(pluginId, defaultEnabled);
   }
@@ -64,6 +69,9 @@ class PluginManager {
   async setEnabled(pluginId, enabled) {
     const plugin = this._plugins.get(pluginId);
     if (!plugin) throw new Error(`Unknown plugin id "${pluginId}"`);
+    if (plugin.required && !enabled) {
+      throw new Error(`Plugin "${pluginId}" is required and cannot be disabled`);
+    }
 
     this.settings.setPluginEnabled(pluginId, enabled);
 

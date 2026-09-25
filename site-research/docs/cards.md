@@ -105,34 +105,62 @@ Source capture: `captures/capture-2026-09-18T06-31-25-039Z.jsonl`
   control that would send them — no such control has been exercised yet).
 
 ## Class/side enumeration (used by the "Add Cards" picker)
-**CONFIRMED**
-- `GET https://api.pvzhtbot.com/tbotapp/user-cards/classes/?side=<Plants|Zombie>`
-  Returns the list of card classes for that side (e.g. Guardian, Kabloom,
-  Mega-Grow, Smarty, Solar for Plants; Beastly, Brainy, Crazy, Hearty,
-  Sneaky for Zombie).
+**CONFIRMED, BREAKING CHANGE observed 2026-09-24** (site owner changed the
+"Add Cards" flow server-side to show missing-card ratios; broke this
+mod's Completion Tracker until fixed — see git history):
+
+- `GET https://api.pvzhtbot.com/tbotapp/user-cards/classes/?side=<side>`
+  **The valid `side` value for Plants changed from `"Plant"` to
+  `"Plants"` (plural).** Zombie is unchanged (`"Zombie"`, singular —
+  yes, this is inconsistent between sides, confirmed live). Querying with
+  the old `"Plant"` value now silently returns `{"classes": []}` instead
+  of an error.
 - `GET https://api.pvzhtbot.com/tbotapp/user-cards/available/?side=<side>&class=<class>`
-  Returns every normal (non-hero, non-Superpower) card in that side/class,
-  **each annotated with an `already_owned: boolean` field** — this is the
-  field the UI uses to render "Already Owned" vs. selectable. Example
-  shape:
+  Same side-value change as above (`side=Plants`, not `Plant`).
+
+  **Response shape changed**: was a bare JSON array, now wrapped:
+  `{"authenticated": true, "cards": [...]}`.
+
+  **Field semantics changed**: the `already_owned: boolean` field is
+  **gone**, replaced by `owned_quantity: number`. More importantly, the
+  endpoint's own filtering behavior changed: it used to return *only*
+  fully-unowned cards (everything owned was excluded server-side, only
+  `already_owned: false` ever appeared in practice). **Now it returns
+  every card that is not at a full 4x playset** — i.e. unowned (0) AND
+  under-playset (1-3) cards both appear, each with its real
+  `owned_quantity`. A card fully at 4x is the only case now omitted.
+  Confirmed live: PATCHing a card's quantity from 4→3 made it reappear in
+  `available/` for its side/class with `owned_quantity: 3`; PATCHing back
+  to 4 made it disappear again.
+
+  Example shape (current):
   ```json
   {
-    "cardid": 59, "card_name": "Arm Wrestler", "side": "Zombie",
-    "card_type": "Hearty", "title": "...", "thumbnail": "...",
-    "traits": "", "set_rarity": "Premium - Uncommon", "stats": "...",
-    "description": "Sports Zombie", "already_owned": true
+    "authenticated": true,
+    "cards": [
+      {
+        "cardid": 521, "card_name": "2nd-Best Taco of All Time",
+        "side": "Plants", "card_type": "Solar", "title": "...",
+        "thumbnail": "...", "traits": "", "set_rarity": "Premium - Super-Rare",
+        "stats": "...", "description": "Trick", "owned_quantity": 3
+      }
+    ]
   }
   ```
-  **CONFIRMED important caveat (per user, matches observed behavior):**
-  Hero cards and Superpower cards are *not* returned by this endpoint at
-  all — they are not addable/removable through the normal collection UI.
-  Verified live: querying `cardinfo/` minus `user-cards/` produced 91
-  "missing" entries, but every one of them was a hero/Superpower (e.g.
-  "Citron", "Grass Knuckles", "Missile Madness"); sweeping *every*
-  side/class combination through `available/` found **zero** cards with
-  `already_owned: false` — i.e. this account's normal collectible-card set
-  is 100% complete, and the gap is entirely non-collectible cards the API
-  deliberately excludes from this endpoint.
+  **Consumers must now treat "not returned" as `owned_quantity: 4`,
+  and any card that IS returned as "owned `owned_quantity`, needs
+  `4 - owned_quantity` more" rather than binary owned/missing.**
+
+  Hero/Superpower-card exclusion is still confirmed unchanged: they never
+  appear in this endpoint's response regardless of the above changes.
+
+## Load current session user's card collection ("my cards") — shape change
+**CONFIRMED, BREAKING CHANGE observed 2026-09-24**: `GET /user-cards/`
+also changed from a bare array to
+`{"authenticated": true, "profile_id": N, "cards": [...]}` — same wrapper
+pattern as `available/` above. (This was likely already true before the
+2026-09-24 break and simply not re-verified since the original 2026-09-18
+capture; the wrapper/plugin code already handled it defensively.)
 
 ## CSRF token issuance
 **CONFIRMED**

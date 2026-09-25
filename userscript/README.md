@@ -17,14 +17,18 @@ Tampermonkey (userscript-header.js)
            can live-update without a page reload
         -> Plugin manager (src/core/plugin-manager.js)
             -> Built-in plugins (src/plugins/<name>/index.js)
-            -> User-authored plugins (userplugins/manifest.js)
+               (including update-checker, a required/always-on one - see
+               plugin list below)
+            -> User-authored plugins (src/userplugins/manifest.js)
     -> UI
         -> Dashboard card (src/ui/dashboard-card.js) -- injects a "Mod Settings"
            card into pvzhtbot.com's own /dashboard grid, styled with the
            site's own CSS classes
         -> Settings panel (src/ui/settings-panel.js) -- lists/toggles plugins,
            opened only from that dashboard card (no floating button - see
-           below)
+           below). A `required: true` plugin (currently just
+           update-checker) renders a "Required" badge instead of a
+           checkbox and cannot be disabled.
 ```
 
 ### Plugin folder layout
@@ -37,16 +41,18 @@ import from another's folder if it needs to build on it:
 src/plugins/
 ├── collection-completion/
 │   └── index.js
-└── deck-buildability/
+├── deck-buildability/
+│   └── index.js
+└── update-checker/
     └── index.js
-userplugins/                 <- for anyone who wants to add their own
+src/userplugins/              <- for anyone who wants to add their own
 ├── manifest.js               <- register your plugin(s) here
 ├── README.md                 <- format + how to depend on another plugin
 └── <your-plugin>/
     └── index.js
 ```
 
-See `userplugins/README.md` for the full plugin-authoring guide.
+See `src/userplugins/README.md` for the full plugin-authoring guide.
 
 ### Why no floating settings button
 An earlier version had a floating ⚙ button as a fallback on pages without
@@ -149,6 +155,33 @@ quantity)` so a stale cache is detected and discarded rather than shown —
 this fixed a real bug caught during live testing where the tracker kept
 showing 503/503 after a card had actually been removed.
 
+**Breaking site change, fixed 2026-09-24:** the site owner reworked the
+"Add Cards" flow server-side to show missing-card ratios. This changed
+`user-cards/available/` in three ways: (1) the `side` query value for
+Plants changed from `"Plant"` to `"Plants"` (Zombie stayed singular —
+inconsistent between sides, confirmed live); (2) the response wrapped
+into `{"authenticated","cards":[...]}` instead of a bare array; (3) most
+importantly, the endpoint's own filtering changed from "return only
+fully-unowned cards, each flagged `already_owned: boolean`" to "return
+every card not at a full 4x playset (unowned OR under-4x), each with
+`owned_quantity: number` instead" — a card fully at 4x is simply absent
+now. Fixed by rebuilding the normal-card universe from `cardinfo/`
+directly (excluding heroes/tokens/superpowers via `set_rarity ===
+'Premium - Hero'`, `set_rarity === 'Token'`, or `description` containing
+`'Superpower'` — verified against the live account, no other
+no-quantity mystery cards exist) instead of relying on `available/`'s
+exclusion list implicitly, since it can no longer be trusted to mean
+"not a normal card." See `site-research/docs/cards.md` for the full
+capture, and `dev/diff-available-vs-mycards.js` for a script that
+independently re-verifies this math directly from the console.
+
+**Cache keyed to build ID, not a hand-bumped version:** `CACHE_KEY`
+includes `__PVZHTBOT_MOD_BUILD_ID__` (the same value `build.js` embeds
+for dev-reload detection), so every rebuild automatically invalidates any
+stale cached result — no more manually bumping a `-v1`/`-v2`/... suffix
+and hoping to remember to do it. A one-time sweep on plugin init clears
+old builds' leftover cache entries from `sessionStorage`.
+
 **Rarity normalization:** the site's own `cardinfo/` data has at least
 one inconsistently-formatted `set_rarity` string (`"Colossal-Super-Rare"`
 on one card vs. `"Colossal - Super-Rare"` on every other card of that
@@ -162,8 +195,10 @@ by normalizing on the first hyphen only (the tier itself, e.g.
 Uncommon, Rare, Super-Rare, Legendary) as columns, each cell showing
 `owned/total` and color-coded (green = complete, amber = partial, red =
 none owned, dark = that set/tier combo doesn't exist, e.g. Premium has no
-Common tier). "Event" has no tier structure so it's a single line below
-the grid instead of a column that would be empty for every other set.
+Common tier). "Event" has no tier structure so it's rendered as its own
+row spanning all tier columns (one merged cell, same styling/coloring as
+every other cell) instead of a column that would be empty for every
+other set.
 
 ### Deck Buildability Helper (`src/plugins/deck-buildability/index.js`)
 Adds a "Deck Buildability" card to `/dashboard` (styled like the other
@@ -181,6 +216,25 @@ missing ones in red with `have/need`), click again to collapse. A search
 box filters by deck name/hero/archetype/creator/card name (e.g. typing a
 card name finds every deck that uses it). Results are paginated 50 at a
 time with a "Show N more" button instead of a hard cutoff.
+
+### Update Checker (`src/plugins/update-checker/index.js`)
+Required, always-on built-in plugin — shown in settings with a "Required"
+badge instead of a toggle (`required: true` on the plugin object; see
+`src/core/plugin-manager.js`). Two separate update signals exist:
+
+1. **Tampermonkey's own `@updateURL`/`@downloadURL`** (in
+   `userscript-header.js`) — the native mechanism, checks `@version`
+   periodically and shows an update badge in the Tampermonkey UI. Only
+   trips on a real `@version` bump (bump this manually per release, not
+   per dev rebuild).
+2. **This plugin** — compares the currently running build's
+   `__PVZHTBOT_MOD_BUILD_ID__` against `dist/build-id.txt` published on
+   GitHub's `master` branch, checked hourly. Catches "you're on a stale
+   build" even between version bumps, and shows a dismissible banner
+   directly on the page instead of requiring a trip to the Tampermonkey
+   extension icon. Dismissal is per-build-id and per-session
+   (`sessionStorage`) — dismissing a notice for build X doesn't suppress
+   the notice once build X+1 ships.
 
 ### Hero Reference (`src/plugins/hero-reference/index.js`)
 Adds a "Hero Reference" card to `/dashboard`. The site's own `/heroinfo`

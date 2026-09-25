@@ -78,7 +78,6 @@ const STYLES = `
   color: #444;
   padding: 6px 4px;
 }
-.pvzhtbot-cc-matrix-event-row { margin-top: 10px; font-size: 12px; color: #ccc; }
 `;
 
 function injectStylesOnce() {
@@ -141,13 +140,15 @@ function formatPlaysetSubLine(result) {
   return `4x playsets: ${result.fullPlaysetNormal} / ${result.totalNormal} (${pct}%)`;
 }
 
-// Bump the version suffix whenever the computation logic changes (not
-// just when the account's cards change) - the fingerprint alone can't
+// Keyed by the build ID (embedded globally by build.js as
+// __PVZHTBOT_MOD_BUILD_ID__, changes every rebuild) instead of a
+// hand-bumped version suffix. The account-fingerprint check alone can't
 // catch "same data, different (fixed) code", since sessionStorage
-// persists across a rebuild/reload during dev. Caught live: the rarity
-// normalization fix below didn't visibly apply until this was bumped,
-// because the stale v1 cache still matched the unchanged fingerprint.
-const CACHE_KEY = 'pvzhtbot-mod-collection-completion-cache-v2';
+// persists across a rebuild/reload during dev - this was previously
+// caught live multiple times (rarity normalization, the available/
+// breaking-change fix) only after manually bumping v1->v2->v3->v4. A
+// build-ID-scoped key invalidates automatically on every rebuild instead.
+const CACHE_KEY = `pvzhtbot-mod-collection-completion-cache-${typeof __PVZHTBOT_MOD_BUILD_ID__ !== 'undefined' ? __PVZHTBOT_MOD_BUILD_ID__ : 'dev'}`;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes — hard upper bound even if the fingerprint somehow still matches
 
 // The cached breakdown is only reused if this fingerprint still matches
@@ -177,6 +178,20 @@ function readCache(fingerprint) {
 function writeCache(result, fingerprint) {
   try {
     sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), fingerprint, result }));
+  } catch {
+    // best-effort; ignore quota/availability errors
+  }
+}
+
+// Every rebuild gets its own CACHE_KEY (see above), so old builds' cache
+// entries just accumulate as dead sessionStorage weight across a long dev
+// session. Sweep them out once per session on load.
+function clearStaleCacheEntries() {
+  try {
+    const prefix = 'pvzhtbot-mod-collection-completion-cache-';
+    for (const key of Object.keys(sessionStorage)) {
+      if (key.startsWith(prefix) && key !== CACHE_KEY) sessionStorage.removeItem(key);
+    }
   } catch {
     // best-effort; ignore quota/availability errors
   }
@@ -259,6 +274,9 @@ async function computeCompletion(api, { forceRefresh = false } = {}) {
   const owned = new Set(myCardsRes.cards.map((c) => c.card_name));
   const ownedQty = new Map(myCardsRes.cards.map((c) => [c.card_name, c.quantity]));
 
+  // Plants' side value changed from "Plant" to "Plants" (plural) in a
+  // site update on 2026-09-24; Zombie stayed singular. Confirmed live —
+  // see site-research/docs/cards.md.
   const sides = ['Plants', 'Zombie'];
   const missingBySideClass = [];
   const underPlaysetBySideClass = [];
@@ -267,50 +285,86 @@ async function computeCompletion(api, { forceRefresh = false } = {}) {
   let ownedNormal = 0;
   let fullPlaysetNormal = 0;
 
+  // BREAKING CHANGE (confirmed live 2026-09-24, see
+  // site-research/docs/cards.md): available/ used to return ONLY
+  // fully-unowned cards, each flagged `already_owned: boolean`. It now
+  // returns every card NOT at a full 4x playset (unowned OR under-4x),
+  // each with `owned_quantity: number` instead. A card fully at 4x is
+  // simply absent from the response, so "not returned" no longer implies
+  // "not a normal collectible card" the way it used to - it now also
+  // means "owned at 4x". To tell those apart we build the normal-card
+  // universe from cardinfo/ directly and explicitly exclude
+  // heroes/tokens/superpowers, instead of relying on available/'s old
+  // implicit exclusion. Verified live against this account's full
+  // dataset: exactly the 91 cards that are Hero-rarity, Token-rarity, or
+  // have "Superpower" in their description are the ones never owned and
+  // never returned by available/ in any ownership state - no other
+  // no-quantity mystery cards exist. Event-rarity cards are real,
+  // ownable normal cards (not excluded here) despite having no tier.
+  function isNonCollectible(cardInfo) {
+    return (
+      cardInfo.set_rarity === 'Premium - Hero' ||
+      cardInfo.set_rarity === 'Token' ||
+      (cardInfo.description || '').includes('Superpower')
+    );
+  }
+
   // This sweep assumes every normal card belongs to exactly one class, so
-  // it's counted exactly once across all side/class combinations.
-  // Verified empirically: of 594 total cards, every multi-class card_type
-  // (comma-separated, e.g. "Guardian, Smarty") belongs to a Hero-rarity
-  // card, and available/ never returns heroes anyway (confirmed earlier).
-  // No normal card had a multi-class card_type as of this check, so no
-  // double-counting occurs today - but this isn't schema-guaranteed,
-  // just confirmed against the current dataset.
+  // it's counted exactly once across all side/class combinations -
+  // verified empirically (no multi-class normal card exists in the
+  // current dataset; multi-class card_type strings like "Hearty, Crazy"
+  // only ever appear on heroes, already excluded above).
   for (const side of sides) {
     const { classes } = await api.getClasses(side);
     for (const cardClass of classes) {
       const available = await api.getAvailableCards(side, cardClass);
       const list = Array.isArray(available) ? available : available.cards || [];
-      for (const card of list) {
-        totalNormal += 1;
 
-        const rarity = normalizeRarity(card.set_rarity);
+      // Cards absent from `list` are implicitly at a full 4x playset -
+      // fetch this class's full normal-card pool from cardinfo so totals/
+      // rarity counts still include them, since `available/` no longer does.
+      const notReturned = new Set(list.map((c) => c.card_name));
+      // cardinfo/'s `side` values already match ("Plants"/"Zombie" -
+      // confirmed live 2026-09-24, see site-research/docs/cards.md), no
+      // normalization needed here.
+      const classCardInfos = allCards.filter(
+        (c) => c.side === side && c.card_type === cardClass && !isNonCollectible(c)
+      );
+
+      for (const cardInfo of classCardInfos) {
+        totalNormal += 1;
+        const rarity = normalizeRarity(cardInfo.set_rarity);
         if (!byRarity.has(rarity)) byRarity.set(rarity, { total: 0, owned: 0, fullPlayset: 0 });
         const rarityStats = byRarity.get(rarity);
         rarityStats.total += 1;
 
-        if (card.already_owned) {
+        const returnedEntry = notReturned.has(cardInfo.card_name)
+          ? list.find((c) => c.card_name === cardInfo.card_name)
+          : null;
+        const qty = returnedEntry ? returnedEntry.owned_quantity : ownedQty.get(cardInfo.card_name) || FULL_PLAYSET;
+
+        if (qty > 0) {
           ownedNormal += 1;
           rarityStats.owned += 1;
+        }
 
-          const qty = ownedQty.get(card.card_name) || 0;
-          if (qty >= FULL_PLAYSET) {
-            fullPlaysetNormal += 1;
-            rarityStats.fullPlayset += 1;
-          } else {
-            let group = underPlaysetBySideClass.find((g) => g.side === side && g.cardClass === cardClass);
-            if (!group) {
-              group = { side, cardClass, cards: [] };
-              underPlaysetBySideClass.push(group);
-            }
-            group.cards.push({ name: card.card_name, quantity: qty });
+        if (qty >= FULL_PLAYSET) {
+          fullPlaysetNormal += 1;
+          rarityStats.fullPlayset += 1;
+        } else if (qty > 0) {
+          let group = underPlaysetBySideClass.find((g) => g.side === side && g.cardClass === cardClass);
+          if (!group) {
+            group = { side, cardClass, cards: [] };
+            underPlaysetBySideClass.push(group);
           }
+          group.cards.push({ name: cardInfo.card_name, quantity: qty });
         } else {
           let group = missingBySideClass.find((g) => g.side === side && g.cardClass === cardClass);
           if (!group) {
             group = { side, cardClass, cards: [] };
             missingBySideClass.push(group);
           }
-          group.cards.push(card.card_name);
+          group.cards.push(cardInfo.card_name);
         }
       }
     }
@@ -400,22 +454,31 @@ function buildRarityMatrix(rarityBreakdown) {
 
     if (setHasAnyData) table.appendChild(row);
   }
-  wrapper.appendChild(table);
 
+  // Event has no tier structure (every Event card is just "Event", no
+  // Common/Rare/etc.), so instead of a column that'd be empty for every
+  // other set, it gets its own row with one cell spanning all tier
+  // columns - same matrix, same cell styling/coloring as everything
+  // else, just merged instead of split by tier.
   if (eventStats) {
-    const eventRow = document.createElement('div');
-    eventRow.className = 'pvzhtbot-cc-matrix-event-row';
-    const label = document.createElement('span');
-    label.textContent = 'Event: ';
-    const value = document.createElement('span');
-    value.style.color = cellColor(eventStats.owned, eventStats.total);
-    value.style.fontWeight = '700';
-    value.textContent = `${eventStats.owned}/${eventStats.total}`;
-    eventRow.appendChild(label);
-    eventRow.appendChild(value);
-    wrapper.appendChild(eventRow);
+    const eventRow = document.createElement('tr');
+    const rowLabel = document.createElement('th');
+    rowLabel.className = 'pvzhtbot-cc-matrix-row-label';
+    rowLabel.textContent = 'Event';
+    eventRow.appendChild(rowLabel);
+
+    const cell = document.createElement('td');
+    cell.className = 'pvzhtbot-cc-matrix-cell';
+    cell.colSpan = TIER_ORDER.length;
+    cell.style.background = cellColor(eventStats.owned, eventStats.total);
+    cell.textContent = `${eventStats.owned}/${eventStats.total}`;
+    cell.title = `Event: ${eventStats.owned}/${eventStats.total} owned`;
+    eventRow.appendChild(cell);
+
+    table.appendChild(eventRow);
   }
 
+  wrapper.appendChild(table);
   return wrapper;
 }
 
@@ -523,6 +586,7 @@ const collectionCompletionPlugin = {
 
   async init(context) {
     injectStylesOnce();
+    clearStaleCacheEntries();
 
     let disposed = false;
     let injectedSummary = null;

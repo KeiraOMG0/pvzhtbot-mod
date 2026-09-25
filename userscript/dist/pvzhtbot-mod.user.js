@@ -1,15 +1,17 @@
 // ==UserScript==
 // @name         PvZHTBot Mod
 // @namespace    https://pvzhtbot.com
-// @version      0.1.0
+// @version      0.2.0
 // @description  Collection completion tracker, deck buildability helper, and hero reference for pvzhtbot.com
 // @match        https://pvzhtbot.com/*
 // @run-at       document-idle
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @updateURL    https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/pvzhtbot-mod.user.js
+// @downloadURL  https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/pvzhtbot-mod.user.js
 // ==/UserScript==
 
-var __PVZHTBOT_MOD_BUILD_ID__ = "1790218921532";
+var __PVZHTBOT_MOD_BUILD_ID__ = "1790306110767";
 (() => {
   // src/api/site-api.js
   var PvzhtbotApiError = class extends Error {
@@ -292,11 +294,13 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1790218921532";
         name: p.name || p.id,
         description: p.description || "",
         enabled: this.isEnabled(p.id),
-        active: this._active.has(p.id)
+        active: this._active.has(p.id),
+        required: Boolean(p.required)
       }));
     }
     isEnabled(pluginId) {
       const plugin = this._plugins.get(pluginId);
+      if (plugin?.required) return true;
       const defaultEnabled = plugin ? Boolean(plugin.defaultEnabled) : false;
       return this.settings.isPluginEnabled(pluginId, defaultEnabled);
     }
@@ -311,6 +315,9 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1790218921532";
     async setEnabled(pluginId, enabled) {
       const plugin = this._plugins.get(pluginId);
       if (!plugin) throw new Error(`Unknown plugin id "${pluginId}"`);
+      if (plugin.required && !enabled) {
+        throw new Error(`Plugin "${pluginId}" is required and cannot be disabled`);
+      }
       this.settings.setPluginEnabled(pluginId, enabled);
       if (enabled && !this._active.has(pluginId)) {
         await this._activate(pluginId);
@@ -396,6 +403,14 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1790218921532";
 #${PANEL_ID} .pvzhtbot-mod-plugin-name { font-weight: 600; }
 #${PANEL_ID} .pvzhtbot-mod-plugin-desc { color: #999; font-size: 11px; margin-top: 2px; }
 #${PANEL_ID} .pvzhtbot-mod-empty { color: #999; font-style: italic; }
+#${PANEL_ID} .pvzhtbot-mod-required-badge {
+  font-size: 10px;
+  color: #9be29b;
+  border: 1px solid #2f5a3a;
+  border-radius: 4px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
 #${PANEL_ID} .pvzhtbot-mod-restart-notice {
   margin-top: 12px;
   padding: 8px 10px;
@@ -438,12 +453,19 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1790218921532";
     desc.textContent = pluginInfo.description;
     info.appendChild(name);
     if (pluginInfo.description) info.appendChild(desc);
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = pluginInfo.enabled;
-    checkbox.addEventListener("change", () => onToggle(pluginInfo.id, checkbox.checked));
     row.appendChild(info);
-    row.appendChild(checkbox);
+    if (pluginInfo.required) {
+      const badge = document.createElement("span");
+      badge.className = "pvzhtbot-mod-required-badge";
+      badge.textContent = "Required";
+      row.appendChild(badge);
+    } else {
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = pluginInfo.enabled;
+      checkbox.addEventListener("change", () => onToggle(pluginInfo.id, checkbox.checked));
+      row.appendChild(checkbox);
+    }
     return row;
   }
   function createSettingsPanel(pluginManager) {
@@ -570,7 +592,7 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1790218921532";
   var DEV_SERVER_ORIGIN = "http://127.0.0.1:8787";
   var POLL_INTERVAL_MS = 1500;
   function startDevReloadWatcher(log2) {
-    let currentBuildId = null;
+    let currentBuildId2 = null;
     let everConnected = false;
     async function poll() {
       let buildId;
@@ -585,12 +607,12 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1790218921532";
         everConnected = true;
         log2(`dev-reload watcher connected (build ${buildId})`);
       }
-      if (currentBuildId === null) {
-        currentBuildId = buildId;
+      if (currentBuildId2 === null) {
+        currentBuildId2 = buildId;
         return;
       }
-      if (buildId !== currentBuildId) {
-        log2(`dev-reload: new build detected (${currentBuildId} -> ${buildId}), reloading...`);
+      if (buildId !== currentBuildId2) {
+        log2(`dev-reload: new build detected (${currentBuildId2} -> ${buildId}), reloading...`);
         location.reload();
       }
     }
@@ -694,7 +716,6 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1790218921532";
   color: #444;
   padding: 6px 4px;
 }
-.pvzhtbot-cc-matrix-event-row { margin-top: 10px; font-size: 12px; color: #ccc; }
 `;
   function injectStylesOnce2() {
     if (document.getElementById(STYLE_ID)) return;
@@ -739,7 +760,7 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1790218921532";
     const pct = pctFloorUnlessComplete(result.fullPlaysetNormal, result.totalNormal);
     return `4x playsets: ${result.fullPlaysetNormal} / ${result.totalNormal} (${pct}%)`;
   }
-  var CACHE_KEY = "pvzhtbot-mod-collection-completion-cache-v2";
+  var CACHE_KEY = `pvzhtbot-mod-collection-completion-cache-${typeof __PVZHTBOT_MOD_BUILD_ID__ !== "undefined" ? __PVZHTBOT_MOD_BUILD_ID__ : "dev"}`;
   var CACHE_TTL_MS = 5 * 60 * 1e3;
   function fingerprintCards(myCardsRes) {
     const uniqueCount = myCardsRes.cards.length;
@@ -761,6 +782,15 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1790218921532";
   function writeCache(result, fingerprint) {
     try {
       sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), fingerprint, result }));
+    } catch {
+    }
+  }
+  function clearStaleCacheEntries() {
+    try {
+      const prefix = "pvzhtbot-mod-collection-completion-cache-";
+      for (const key of Object.keys(sessionStorage)) {
+        if (key.startsWith(prefix) && key !== CACHE_KEY) sessionStorage.removeItem(key);
+      }
     } catch {
     }
   }
@@ -814,39 +844,47 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1790218921532";
     let totalNormal = 0;
     let ownedNormal = 0;
     let fullPlaysetNormal = 0;
+    function isNonCollectible(cardInfo) {
+      return cardInfo.set_rarity === "Premium - Hero" || cardInfo.set_rarity === "Token" || (cardInfo.description || "").includes("Superpower");
+    }
     for (const side of sides) {
       const { classes } = await api.getClasses(side);
       for (const cardClass of classes) {
         const available = await api.getAvailableCards(side, cardClass);
         const list = Array.isArray(available) ? available : available.cards || [];
-        for (const card of list) {
+        const notReturned = new Set(list.map((c) => c.card_name));
+        const classCardInfos = allCards.filter(
+          (c) => c.side === side && c.card_type === cardClass && !isNonCollectible(c)
+        );
+        for (const cardInfo of classCardInfos) {
           totalNormal += 1;
-          const rarity = normalizeRarity(card.set_rarity);
+          const rarity = normalizeRarity(cardInfo.set_rarity);
           if (!byRarity.has(rarity)) byRarity.set(rarity, { total: 0, owned: 0, fullPlayset: 0 });
           const rarityStats = byRarity.get(rarity);
           rarityStats.total += 1;
-          if (card.already_owned) {
+          const returnedEntry = notReturned.has(cardInfo.card_name) ? list.find((c) => c.card_name === cardInfo.card_name) : null;
+          const qty = returnedEntry ? returnedEntry.owned_quantity : ownedQty.get(cardInfo.card_name) || FULL_PLAYSET;
+          if (qty > 0) {
             ownedNormal += 1;
             rarityStats.owned += 1;
-            const qty = ownedQty.get(card.card_name) || 0;
-            if (qty >= FULL_PLAYSET) {
-              fullPlaysetNormal += 1;
-              rarityStats.fullPlayset += 1;
-            } else {
-              let group = underPlaysetBySideClass.find((g) => g.side === side && g.cardClass === cardClass);
-              if (!group) {
-                group = { side, cardClass, cards: [] };
-                underPlaysetBySideClass.push(group);
-              }
-              group.cards.push({ name: card.card_name, quantity: qty });
+          }
+          if (qty >= FULL_PLAYSET) {
+            fullPlaysetNormal += 1;
+            rarityStats.fullPlayset += 1;
+          } else if (qty > 0) {
+            let group = underPlaysetBySideClass.find((g) => g.side === side && g.cardClass === cardClass);
+            if (!group) {
+              group = { side, cardClass, cards: [] };
+              underPlaysetBySideClass.push(group);
             }
+            group.cards.push({ name: cardInfo.card_name, quantity: qty });
           } else {
             let group = missingBySideClass.find((g) => g.side === side && g.cardClass === cardClass);
             if (!group) {
               group = { side, cardClass, cards: [] };
               missingBySideClass.push(group);
             }
-            group.cards.push(card.card_name);
+            group.cards.push(cardInfo.card_name);
           }
         }
       }
@@ -918,20 +956,22 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1790218921532";
       }
       if (setHasAnyData) table.appendChild(row);
     }
-    wrapper.appendChild(table);
     if (eventStats) {
-      const eventRow = document.createElement("div");
-      eventRow.className = "pvzhtbot-cc-matrix-event-row";
-      const label = document.createElement("span");
-      label.textContent = "Event: ";
-      const value = document.createElement("span");
-      value.style.color = cellColor(eventStats.owned, eventStats.total);
-      value.style.fontWeight = "700";
-      value.textContent = `${eventStats.owned}/${eventStats.total}`;
-      eventRow.appendChild(label);
-      eventRow.appendChild(value);
-      wrapper.appendChild(eventRow);
+      const eventRow = document.createElement("tr");
+      const rowLabel = document.createElement("th");
+      rowLabel.className = "pvzhtbot-cc-matrix-row-label";
+      rowLabel.textContent = "Event";
+      eventRow.appendChild(rowLabel);
+      const cell = document.createElement("td");
+      cell.className = "pvzhtbot-cc-matrix-cell";
+      cell.colSpan = TIER_ORDER.length;
+      cell.style.background = cellColor(eventStats.owned, eventStats.total);
+      cell.textContent = `${eventStats.owned}/${eventStats.total}`;
+      cell.title = `Event: ${eventStats.owned}/${eventStats.total} owned`;
+      eventRow.appendChild(cell);
+      table.appendChild(eventRow);
     }
+    wrapper.appendChild(table);
     return wrapper;
   }
   function buildDetailsPanel(result) {
@@ -1020,6 +1060,7 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1790218921532";
     defaultEnabled: true,
     async init(context) {
       injectStylesOnce2();
+      clearStaleCacheEntries();
       let disposed = false;
       let injectedSummary = null;
       let injectedDetails = null;
@@ -1729,7 +1770,129 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1790218921532";
     }
   };
 
-  // userplugins/manifest.js
+  // src/plugins/update-checker/index.js
+  var BUILD_ID_URL = "https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/build-id.txt";
+  var INSTALL_URL = "https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/pvzhtbot-mod.user.js";
+  var CHECK_INTERVAL_MS = 60 * 60 * 1e3;
+  var DISMISSED_KEY_PREFIX = "pvzhtbot-mod-update-dismissed-";
+  var BANNER_ID = "pvzhtbot-update-banner";
+  var STYLE_ID4 = "pvzhtbot-update-banner-styles";
+  var STYLES5 = `
+#${BANNER_ID} {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 999997;
+  max-width: 320px;
+  background: #14161a;
+  border: 1px solid #2f5a3a;
+  border-radius: 8px;
+  padding: 12px 14px;
+  color: #eee;
+  font: 13px system-ui, sans-serif;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+#${BANNER_ID} .pvzhtbot-update-title { font-weight: 600; color: #9be29b; margin-bottom: 4px; }
+#${BANNER_ID} .pvzhtbot-update-body { color: #ccc; font-size: 12px; margin-bottom: 10px; }
+#${BANNER_ID} .pvzhtbot-update-actions { display: flex; gap: 8px; justify-content: flex-end; }
+#${BANNER_ID} button {
+  border: none;
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+#${BANNER_ID} .pvzhtbot-update-view { background: #1f6f3f; color: #fff; }
+#${BANNER_ID} .pvzhtbot-update-dismiss { background: #262626; color: #ccc; }
+`;
+  function injectStylesOnce5() {
+    if (document.getElementById(STYLE_ID4)) return;
+    const style = document.createElement("style");
+    style.id = STYLE_ID4;
+    style.textContent = STYLES5;
+    document.head.appendChild(style);
+  }
+  function currentBuildId() {
+    return typeof __PVZHTBOT_MOD_BUILD_ID__ !== "undefined" ? __PVZHTBOT_MOD_BUILD_ID__ : null;
+  }
+  async function fetchLatestBuildId() {
+    const res = await fetch(`${BUILD_ID_URL}?_=${Date.now()}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`build-id.txt fetch failed with ${res.status}`);
+    return (await res.text()).trim();
+  }
+  function showBanner(latestBuildId, log2) {
+    if (document.getElementById(BANNER_ID)) return;
+    injectStylesOnce5();
+    const banner = document.createElement("div");
+    banner.id = BANNER_ID;
+    const title = document.createElement("div");
+    title.className = "pvzhtbot-update-title";
+    title.textContent = "PvZHTBot Mod update available";
+    banner.appendChild(title);
+    const body = document.createElement("div");
+    body.className = "pvzhtbot-update-body";
+    body.textContent = "A newer build is published on GitHub than the one currently running.";
+    banner.appendChild(body);
+    const actions = document.createElement("div");
+    actions.className = "pvzhtbot-update-actions";
+    const dismissBtn = document.createElement("button");
+    dismissBtn.className = "pvzhtbot-update-dismiss";
+    dismissBtn.textContent = "Dismiss";
+    dismissBtn.addEventListener("click", () => {
+      try {
+        sessionStorage.setItem(`${DISMISSED_KEY_PREFIX}${latestBuildId}`, "1");
+      } catch {
+      }
+      banner.remove();
+    });
+    const viewBtn = document.createElement("button");
+    viewBtn.className = "pvzhtbot-update-view";
+    viewBtn.textContent = "View on GitHub";
+    viewBtn.addEventListener("click", () => {
+      window.open(INSTALL_URL, "_blank", "noopener,noreferrer");
+    });
+    actions.appendChild(dismissBtn);
+    actions.appendChild(viewBtn);
+    banner.appendChild(actions);
+    document.body.appendChild(banner);
+    log2("[update-checker] showing update banner");
+  }
+  function wasDismissed(buildId) {
+    try {
+      return sessionStorage.getItem(`${DISMISSED_KEY_PREFIX}${buildId}`) === "1";
+    } catch {
+      return false;
+    }
+  }
+  async function checkOnce(log2) {
+    const running = currentBuildId();
+    if (!running) return;
+    try {
+      const latest = await fetchLatestBuildId();
+      if (latest && latest !== running && !wasDismissed(latest)) {
+        showBanner(latest, log2);
+      }
+    } catch (err) {
+      log2(`[update-checker] check failed: ${err.message}`, "error");
+    }
+  }
+  var updateCheckerPlugin = {
+    id: "update-checker",
+    name: "Update Checker",
+    description: "Checks GitHub for a newer build and shows a dashboard notice if this install is out of date. Always on.",
+    defaultEnabled: true,
+    required: true,
+    async init(context) {
+      checkOnce(context.log);
+      const intervalId = setInterval(() => checkOnce(context.log), CHECK_INTERVAL_MS);
+      return () => {
+        clearInterval(intervalId);
+        document.getElementById(BANNER_ID)?.remove();
+      };
+    }
+  };
+
+  // src/userplugins/manifest.js
   var userPlugins = [];
 
   // src/core/loader.js
@@ -1744,6 +1907,7 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1790218921532";
     const backend = new BackendClient({ baseUrl: settings.get("backendUrl", null) });
     const context = { api, backend, settings, log };
     const pluginManager = new PluginManager({ settings, context });
+    pluginManager.register(updateCheckerPlugin);
     pluginManager.register(collectionCompletionPlugin);
     pluginManager.register(deckBuildabilityPlugin);
     pluginManager.register(heroReferencePlugin);

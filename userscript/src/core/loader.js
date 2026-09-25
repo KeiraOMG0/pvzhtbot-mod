@@ -17,11 +17,12 @@ import { startDevReloadWatcher } from './dev-reload.js';
 import { collectionCompletionPlugin } from '../plugins/collection-completion/index.js';
 import { deckBuildabilityPlugin } from '../plugins/deck-buildability/index.js';
 import { heroReferencePlugin } from '../plugins/hero-reference/index.js';
-// User-authored plugins live in ../../userplugins/ (repo root, sibling to
-// src/) and register themselves via userplugins/manifest.js - see
-// userplugins/README.md for the format. This is the ONLY place a new
-// userplugin needs to be added (edit the manifest, not this file).
-import { userPlugins } from '../../userplugins/manifest.js';
+import { updateCheckerPlugin } from '../plugins/update-checker/index.js';
+// User-authored plugins live in src/userplugins/ and register themselves
+// via src/userplugins/manifest.js - see src/userplugins/README.md for the
+// format. This is the ONLY place a new userplugin needs to be added (edit
+// the manifest, not this file).
+import { userPlugins } from '../userplugins/manifest.js';
 
 const LOG_PREFIX = '[pvzhtbot-mod]';
 
@@ -38,6 +39,7 @@ async function boot() {
   const context = { api, backend, settings, log };
   const pluginManager = new PluginManager({ settings, context });
 
+  pluginManager.register(updateCheckerPlugin);
   pluginManager.register(collectionCompletionPlugin);
   pluginManager.register(deckBuildabilityPlugin);
   pluginManager.register(heroReferencePlugin);

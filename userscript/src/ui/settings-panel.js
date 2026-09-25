@@ -62,6 +62,14 @@ const STYLES = `
 #${PANEL_ID} .pvzhtbot-mod-plugin-name { font-weight: 600; }
 #${PANEL_ID} .pvzhtbot-mod-plugin-desc { color: #999; font-size: 11px; margin-top: 2px; }
 #${PANEL_ID} .pvzhtbot-mod-empty { color: #999; font-style: italic; }
+#${PANEL_ID} .pvzhtbot-mod-required-badge {
+  font-size: 10px;
+  color: #9be29b;
+  border: 1px solid #2f5a3a;
+  border-radius: 4px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
 #${PANEL_ID} .pvzhtbot-mod-restart-notice {
   margin-top: 12px;
   padding: 8px 10px;
@@ -108,13 +116,21 @@ function renderPluginRow(pluginInfo, onToggle) {
   info.appendChild(name);
   if (pluginInfo.description) info.appendChild(desc);
 
-  const checkbox = document.createElement('input');
-  checkbox.type = 'checkbox';
-  checkbox.checked = pluginInfo.enabled;
-  checkbox.addEventListener('change', () => onToggle(pluginInfo.id, checkbox.checked));
-
   row.appendChild(info);
-  row.appendChild(checkbox);
+
+  if (pluginInfo.required) {
+    const badge = document.createElement('span');
+    badge.className = 'pvzhtbot-mod-required-badge';
+    badge.textContent = 'Required';
+    row.appendChild(badge);
+  } else {
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = pluginInfo.enabled;
+    checkbox.addEventListener('change', () => onToggle(pluginInfo.id, checkbox.checked));
+    row.appendChild(checkbox);
+  }
+
   return row;
 }
 
