@@ -27,11 +27,13 @@ change their settings (⚙).
 |---|---|
 | **Card Quick Search** | `Ctrl+K` on any page: searches every card by name, alias, tribe, trait or ability text, with stats and how many you own. Hotkey is configurable. |
 | **Keep or Scrap Advisor** | Checks the site's Keep or Scrap guide against your collection: which recommended cards (especially *Craft* picks) you're still missing, per class. |
-| **Collection Completion Tracker** | On the Card Manager page: % of all cards owned, a separate 4x-playset %, a rarity × set matrix, and lists of missing / under-4x cards. Updates live as you edit. |
 | **Deck Buildability Helper** | Ranks every community deck by how much of it you can build right now, with exactly which cards you're missing. |
 | **Hero Reference** | A searchable hero + superpower lookup (the site's hero page is a static image grid). |
 | **Crash Handler** *(core, always on)* | If a plugin crashes it tells you, and it auto-disables any plugin that keeps failing or freezes the page, so one broken plugin can't break the site for you. |
 | **Update Checker** *(core, always on)* | Tells you when a newer Greenhouse build is out. |
+
+Retired plugins (e.g. the Collection Completion Tracker, now built into
+the site) live in [`userscript/archive/`](userscript/archive/) as history.
 
 Everything is **read-only** against your account: no plugin adds, removes
 or changes cards, decks, or profile data.

@@ -7,6 +7,7 @@ import { build, context } from 'esbuild';
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { URLS, SCRIPT_FILE, META_FILE, BUILD_ID_FILE } from './release.config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const watch = process.argv.includes('--watch');
@@ -21,9 +22,8 @@ const watch = process.argv.includes('--watch');
 // @updateURL points at a tiny header-only dist/*.meta.js, which is what
 // Tampermonkey polls; it only downloads the full @downloadURL script when
 // the meta version is newer.
-const RAW_BASE = 'https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist';
-const SCRIPT_FILE = 'pvzhtbot-mod.user.js';
-const META_FILE = 'pvzhtbot-mod.meta.js';
+// Where it's published lives in release.config.js (shared with the
+// bundle via __GREENHOUSE_URLS__ and with dev-server.js).
 
 function stampVersion(buildId) {
   const pkg = JSON.parse(readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
@@ -41,8 +41,8 @@ function renderHeader(version) {
     return src.replace(re, `$1${value}`);
   };
   let header = setTag(template, 'version', version);
-  header = setTag(header, 'updateURL', `${RAW_BASE}/${META_FILE}`);
-  header = setTag(header, 'downloadURL', `${RAW_BASE}/${SCRIPT_FILE}`);
+  header = setTag(header, 'updateURL', URLS.meta);
+  header = setTag(header, 'downloadURL', URLS.install);
   return header.trimEnd();
 }
 
@@ -58,7 +58,7 @@ function writeBundle(bundleCode) {
   const header = renderHeader(version);
   writeFileSync(outPath, `${header}\nvar __PVZHTBOT_MOD_BUILD_ID__ = "${buildId}";\n${bundleCode}`, 'utf8');
   writeFileSync(path.join(outDir, META_FILE), `${header}\n`, 'utf8');
-  writeFileSync(path.join(outDir, 'build-id.txt'), buildId, 'utf8');
+  writeFileSync(path.join(outDir, BUILD_ID_FILE), buildId, 'utf8');
   console.log(`Built ${outPath} (v${version}, build ${buildId}${watch ? ', DEV' : ''})`);
 }
 
@@ -152,7 +152,12 @@ const buildOptions = {
   // release builds (npm run build) compile that code out entirely, so
   // installed copies never hit 127.0.0.1 (which spams the console with
   // connection-refused errors when no dev server is running).
-  define: { __GREENHOUSE_DEV__: watch ? 'true' : 'false' },
+  define: {
+    __GREENHOUSE_DEV__: watch ? 'true' : 'false',
+    // Published/dev URLs from release.config.js, so nothing in src/
+    // hard-codes them (update-checker, dev-reload, brand.js read this).
+    __GREENHOUSE_URLS__: JSON.stringify(URLS),
+  },
 };
 
 async function main() {

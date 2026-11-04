@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Greenhouse
 // @namespace    https://pvzhtbot.com
-// @version      0.3.0.202611040112
+// @version      0.3.0.202611040118
 // @description  Greenhouse - an unofficial plugin-based client mod for pvzhtbot.com (collection tracker, deck buildability, hero reference, and more). Not affiliated with pvzhtbot.com; using it violates the site's Terms of Service.
 // @author       Keira
 // @match        https://pvzhtbot.com/*
@@ -12,8 +12,11 @@
 // @updateURL    https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/pvzhtbot-mod.meta.js
 // @downloadURL  https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/pvzhtbot-mod.user.js
 // ==/UserScript==
-var __PVZHTBOT_MOD_BUILD_ID__ = "1793754737966";
+var __PVZHTBOT_MOD_BUILD_ID__ = "1793755083456";
 (() => {
+  // <define:__GREENHOUSE_URLS__>
+  var define_GREENHOUSE_URLS_default = { repo: "https://github.com/KeiraOMG0/pvzhtbot-mod", install: "https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/pvzhtbot-mod.user.js", meta: "https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/pvzhtbot-mod.meta.js", buildId: "https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/build-id.txt", devServer: "http://127.0.0.1:8787" };
+
   // src/api/site-api.js
   var PvzhtbotApiError = class extends Error {
     constructor(message, { status, url, body } = {}) {
@@ -575,7 +578,8 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1793754737966";
     name: "Greenhouse",
     tagline: "An unofficial client mod for pvzhtbot.com",
     logPrefix: "[Greenhouse]",
-    repoUrl: "https://github.com/KeiraOMG0/pvzhtbot-mod",
+    repoUrl: define_GREENHOUSE_URLS_default.repo,
+    // injected by build.js from release.config.js
     disclaimer: "Unofficial and not affiliated with pvzhtbot.com or its owner. Using it violates pvzhtbot.com's Terms of Service \u2014 use at your own risk."
   });
   var THEME = Object.freeze({
@@ -985,6 +989,9 @@ ${P} .gh-foot a { color: #9a9a9a; }
       document.querySelector(`[${marker}]`)?.remove();
     };
   }
+
+  // src/core/dev-reload.js
+  var DEV_SERVER_ORIGIN = define_GREENHOUSE_URLS_default.devServer;
 
   // src/ui/toast.js
   var STACK_ID = "greenhouse-toast-stack";
@@ -1622,462 +1629,6 @@ ${P} .gh-foot a { color: #9a9a9a; }
     }
   });
 
-  // src/plugins/collection-completion/index.js
-  var SUMMARY_SELECTOR = ".card-manager-summary";
-  var CONTENT_SELECTOR = ".card-manager-content";
-  var MARKER_ATTR = "data-pvzhtbot-collection-completion";
-  var STYLE_ID4 = "pvzhtbot-collection-completion-styles";
-  var STYLES5 = `
-.pvzhtbot-cc-details {
-  background: #14161a;
-  border: 1px solid #262626;
-  border-radius: 8px;
-  padding: 12px 16px;
-  margin: 0 0 16px;
-  font-size: 13px;
-  color: #ccc;
-}
-.pvzhtbot-cc-details summary {
-  cursor: pointer;
-  font-weight: 600;
-  color: #eee;
-  list-style: none;
-}
-.pvzhtbot-cc-details summary::-webkit-details-marker { display: none; }
-.pvzhtbot-cc-details summary::before { content: '\u25B6 '; }
-.pvzhtbot-cc-details[open] summary::before { content: '\u25BC '; }
-.pvzhtbot-cc-summary-sub { font-size: 11px; color: #999; margin-top: 4px; font-weight: 400; }
-.pvzhtbot-cc-group { margin-top: 10px; }
-.pvzhtbot-cc-group-title { font-weight: 600; color: #9be29b; margin-bottom: 4px; }
-.pvzhtbot-cc-underplayset-qty { color: #e0c96a; }
-.pvzhtbot-cc-card-list { display: flex; flex-wrap: wrap; gap: 6px; }
-.pvzhtbot-cc-card-chip {
-  background: #1f2125;
-  border: 1px solid #333;
-  border-radius: 4px;
-  padding: 2px 8px;
-  font-size: 12px;
-}
-.pvzhtbot-cc-loading, .pvzhtbot-cc-empty { color: #999; font-style: italic; }
-.pvzhtbot-cc-error { color: #e08080; }
-.pvzhtbot-cc-matrix { border-collapse: collapse; margin-top: 8px; width: 100%; table-layout: fixed; }
-.pvzhtbot-cc-matrix th { font-size: 11px; color: #999; font-weight: 600; padding: 4px 6px; text-align: center; }
-.pvzhtbot-cc-matrix th:first-child { text-align: left; width: 22%; }
-.pvzhtbot-cc-matrix-row-label { font-size: 12px; color: #eee; font-weight: 600; text-align: left !important; padding: 4px 6px !important; }
-.pvzhtbot-cc-matrix-cell {
-  text-align: center;
-  font-size: 11px;
-  font-weight: 700;
-  color: #fff;
-  padding: 6px 4px;
-  border-radius: 4px;
-  border: 2px solid #14161a;
-}
-.pvzhtbot-cc-matrix-cell-empty {
-  text-align: center;
-  font-size: 11px;
-  color: #444;
-  padding: 6px 4px;
-}
-`;
-  function injectStylesOnce2() {
-    if (document.getElementById(STYLE_ID4)) return;
-    const style = document.createElement("style");
-    style.id = STYLE_ID4;
-    style.textContent = STYLES5;
-    document.head.appendChild(style);
-  }
-  function isCardManagerPage() {
-    return location.pathname === "/dashboard/card-manager" || location.pathname === "/dashboard/card-manager/";
-  }
-  function buildSummaryBox(percentText) {
-    const box = document.createElement("div");
-    box.className = "summary-item";
-    box.setAttribute(MARKER_ATTR, "summary");
-    const label = document.createElement("span");
-    label.className = "summary-label";
-    label.textContent = "Completion";
-    const value = document.createElement("div");
-    value.className = "pvzhtbot-cc-summary-value";
-    value.style.fontWeight = "700";
-    value.style.fontSize = "20px";
-    value.style.marginTop = "2px";
-    value.textContent = percentText;
-    const subLine = document.createElement("div");
-    subLine.className = "pvzhtbot-cc-summary-sub";
-    box.appendChild(label);
-    box.appendChild(value);
-    box.appendChild(subLine);
-    return box;
-  }
-  function pctFloorUnlessComplete(owned, total) {
-    if (total === 0) return 0;
-    if (owned >= total) return 100;
-    return Math.min(99, Math.floor(owned / total * 100));
-  }
-  function formatCompletionValue(result) {
-    const pct = pctFloorUnlessComplete(result.ownedNormal, result.totalNormal);
-    return `${result.ownedNormal} / ${result.totalNormal} (${pct}%)`;
-  }
-  function formatPlaysetSubLine(result) {
-    const pct = pctFloorUnlessComplete(result.fullPlaysetNormal, result.totalNormal);
-    return `4x playsets: ${result.fullPlaysetNormal} / ${result.totalNormal} (${pct}%)`;
-  }
-  var CACHE_KEY = `pvzhtbot-mod-collection-completion-cache-${typeof __PVZHTBOT_MOD_BUILD_ID__ !== "undefined" ? __PVZHTBOT_MOD_BUILD_ID__ : "dev"}`;
-  var CACHE_TTL_MS = 5 * 60 * 1e3;
-  function fingerprintCards(myCardsRes) {
-    const uniqueCount = myCardsRes.cards.length;
-    const totalQuantity = myCardsRes.cards.reduce((sum, c) => sum + c.quantity, 0);
-    return `${uniqueCount}:${totalQuantity}`;
-  }
-  function readCache(fingerprint) {
-    try {
-      const raw = sessionStorage.getItem(CACHE_KEY);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (Date.now() - parsed.ts > CACHE_TTL_MS) return null;
-      if (parsed.fingerprint !== fingerprint) return null;
-      return parsed.result;
-    } catch {
-      return null;
-    }
-  }
-  function writeCache(result, fingerprint) {
-    try {
-      sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), fingerprint, result }));
-    } catch {
-    }
-  }
-  function clearStaleCacheEntries() {
-    try {
-      const prefix = "pvzhtbot-mod-collection-completion-cache-";
-      for (const key of Object.keys(sessionStorage)) {
-        if (key.startsWith(prefix) && key !== CACHE_KEY) sessionStorage.removeItem(key);
-      }
-    } catch {
-    }
-  }
-  function normalizeRarity(rawRarity) {
-    if (!rawRarity) return "Unknown";
-    const trimmed = rawRarity.trim();
-    const firstHyphen = trimmed.indexOf("-");
-    if (firstHyphen === -1) return trimmed;
-    const set = trimmed.slice(0, firstHyphen).trim();
-    const tier = trimmed.slice(firstHyphen + 1).trim();
-    return `${set} - ${tier}`;
-  }
-  function splitSetAndTier(normalizedRarity) {
-    const firstHyphen = normalizedRarity.indexOf(" - ");
-    if (firstHyphen === -1) return { set: normalizedRarity, tier: "" };
-    return {
-      set: normalizedRarity.slice(0, firstHyphen),
-      tier: normalizedRarity.slice(firstHyphen + 3)
-    };
-  }
-  var SET_ORDER = ["Basic", "Premium", "Galactic", "Colossal", "Triassic", "Event"];
-  var TIER_ORDER = ["Common", "Uncommon", "Rare", "Super-Rare", "Legendary"];
-  function orderIndex(list, value) {
-    const idx = list.indexOf(value);
-    return idx === -1 ? list.length : idx;
-  }
-  function compareRaritiesBySetThenTier(a, b) {
-    const aParts = splitSetAndTier(a.rarity);
-    const bParts = splitSetAndTier(b.rarity);
-    const setDiff = orderIndex(SET_ORDER, aParts.set) - orderIndex(SET_ORDER, bParts.set);
-    if (setDiff !== 0) return setDiff;
-    const tierDiff = orderIndex(TIER_ORDER, aParts.tier) - orderIndex(TIER_ORDER, bParts.tier);
-    if (tierDiff !== 0) return tierDiff;
-    return a.rarity.localeCompare(b.rarity);
-  }
-  async function computeCompletion(api, { forceRefresh = false } = {}) {
-    const myCardsRes = await api.getMyCards();
-    const fingerprint = fingerprintCards(myCardsRes);
-    if (!forceRefresh) {
-      const cached = readCache(fingerprint);
-      if (cached) return cached;
-    }
-    const FULL_PLAYSET = 4;
-    const allCards = await api.getAllCardInfo();
-    const owned = new Set(myCardsRes.cards.map((c) => c.card_name));
-    const ownedQty = new Map(myCardsRes.cards.map((c) => [c.card_name, c.quantity]));
-    const sides = ["Plants", "Zombie"];
-    const missingBySideClass = [];
-    const underPlaysetBySideClass = [];
-    const byRarity = /* @__PURE__ */ new Map();
-    let totalNormal = 0;
-    let ownedNormal = 0;
-    let fullPlaysetNormal = 0;
-    function isNonCollectible(cardInfo) {
-      return cardInfo.set_rarity === "Premium - Hero" || cardInfo.set_rarity === "Token" || (cardInfo.description || "").includes("Superpower");
-    }
-    for (const side of sides) {
-      const { classes } = await api.getClasses(side);
-      for (const cardClass of classes) {
-        const available = await api.getAvailableCards(side, cardClass);
-        const list = Array.isArray(available) ? available : available.cards || [];
-        const notReturned = new Set(list.map((c) => c.card_name));
-        const classCardInfos = allCards.filter(
-          (c) => c.side === side && c.card_type === cardClass && !isNonCollectible(c)
-        );
-        for (const cardInfo of classCardInfos) {
-          totalNormal += 1;
-          const rarity = normalizeRarity(cardInfo.set_rarity);
-          if (!byRarity.has(rarity)) byRarity.set(rarity, { total: 0, owned: 0, fullPlayset: 0 });
-          const rarityStats = byRarity.get(rarity);
-          rarityStats.total += 1;
-          const returnedEntry = notReturned.has(cardInfo.card_name) ? list.find((c) => c.card_name === cardInfo.card_name) : null;
-          const qty = returnedEntry ? returnedEntry.owned_quantity : ownedQty.get(cardInfo.card_name) || FULL_PLAYSET;
-          if (qty > 0) {
-            ownedNormal += 1;
-            rarityStats.owned += 1;
-          }
-          if (qty >= FULL_PLAYSET) {
-            fullPlaysetNormal += 1;
-            rarityStats.fullPlayset += 1;
-          } else if (qty > 0) {
-            let group = underPlaysetBySideClass.find((g) => g.side === side && g.cardClass === cardClass);
-            if (!group) {
-              group = { side, cardClass, cards: [] };
-              underPlaysetBySideClass.push(group);
-            }
-            group.cards.push({ name: cardInfo.card_name, quantity: qty });
-          } else {
-            let group = missingBySideClass.find((g) => g.side === side && g.cardClass === cardClass);
-            if (!group) {
-              group = { side, cardClass, cards: [] };
-              missingBySideClass.push(group);
-            }
-            group.cards.push(cardInfo.card_name);
-          }
-        }
-      }
-    }
-    const rarityBreakdown = [...byRarity.entries()].map(([rarity, stats]) => ({ rarity, ...stats })).sort(compareRaritiesBySetThenTier);
-    const result = {
-      totalNormal,
-      ownedNormal,
-      fullPlaysetNormal,
-      missingBySideClass,
-      underPlaysetBySideClass,
-      rarityBreakdown,
-      totalGameCards: allCards.length,
-      ownedTotal: owned.size
-    };
-    writeCache(result, fingerprint);
-    return result;
-  }
-  var GRID_SETS = SET_ORDER.filter((s) => s !== "Event");
-  function cellColor(owned, total) {
-    if (total === 0) return "#444";
-    if (owned === total) return "#3f9e5e";
-    if (owned === 0) return "#5a2a2a";
-    return "#8a6a2a";
-  }
-  function buildRarityMatrix(rarityBreakdown) {
-    const bySetTier = /* @__PURE__ */ new Map();
-    let eventStats = null;
-    for (const { rarity, owned, total } of rarityBreakdown) {
-      const { set, tier } = splitSetAndTier(rarity);
-      if (set === "Event") {
-        eventStats = { owned, total };
-      } else {
-        bySetTier.set(`${set}|${tier}`, { owned, total });
-      }
-    }
-    const wrapper = document.createElement("div");
-    const table = document.createElement("table");
-    table.className = "pvzhtbot-cc-matrix";
-    const headerRow = document.createElement("tr");
-    headerRow.appendChild(document.createElement("th"));
-    for (const tier of TIER_ORDER) {
-      const th = document.createElement("th");
-      th.textContent = tier;
-      headerRow.appendChild(th);
-    }
-    table.appendChild(headerRow);
-    for (const set of GRID_SETS) {
-      const row = document.createElement("tr");
-      const setHeader = document.createElement("th");
-      setHeader.className = "pvzhtbot-cc-matrix-row-label";
-      setHeader.textContent = set;
-      row.appendChild(setHeader);
-      let setHasAnyData = false;
-      for (const tier of TIER_ORDER) {
-        const stats = bySetTier.get(`${set}|${tier}`);
-        const cell = document.createElement("td");
-        if (stats) {
-          setHasAnyData = true;
-          cell.className = "pvzhtbot-cc-matrix-cell";
-          cell.style.background = cellColor(stats.owned, stats.total);
-          cell.textContent = `${stats.owned}/${stats.total}`;
-          cell.title = `${set} - ${tier}: ${stats.owned}/${stats.total} owned`;
-        } else {
-          cell.className = "pvzhtbot-cc-matrix-cell-empty";
-          cell.textContent = "\u2014";
-        }
-        row.appendChild(cell);
-      }
-      if (setHasAnyData) table.appendChild(row);
-    }
-    if (eventStats) {
-      const eventRow = document.createElement("tr");
-      const rowLabel = document.createElement("th");
-      rowLabel.className = "pvzhtbot-cc-matrix-row-label";
-      rowLabel.textContent = "Event";
-      eventRow.appendChild(rowLabel);
-      const cell = document.createElement("td");
-      cell.className = "pvzhtbot-cc-matrix-cell";
-      cell.colSpan = TIER_ORDER.length;
-      cell.style.background = cellColor(eventStats.owned, eventStats.total);
-      cell.textContent = `${eventStats.owned}/${eventStats.total}`;
-      cell.title = `Event: ${eventStats.owned}/${eventStats.total} owned`;
-      eventRow.appendChild(cell);
-      table.appendChild(eventRow);
-    }
-    wrapper.appendChild(table);
-    return wrapper;
-  }
-  function buildDetailsPanel(result) {
-    const details = document.createElement("details");
-    details.className = "pvzhtbot-cc-details";
-    details.setAttribute(MARKER_ATTR, "details");
-    const summary = document.createElement("summary");
-    const missingCount = result.totalNormal - result.ownedNormal;
-    summary.textContent = missingCount === 0 ? "Completion breakdown (100% \u2014 full collection of normal cards!)" : `Completion breakdown (${missingCount} missing across ${result.missingBySideClass.length} side/class groups)`;
-    details.appendChild(summary);
-    if (result.rarityBreakdown?.length) {
-      const rarityTitle = document.createElement("div");
-      rarityTitle.className = "pvzhtbot-cc-group-title";
-      rarityTitle.style.marginTop = "4px";
-      rarityTitle.textContent = "By set / rarity";
-      details.appendChild(rarityTitle);
-      details.appendChild(buildRarityMatrix(result.rarityBreakdown));
-    }
-    if (missingCount > 0) {
-      const missingTitle = document.createElement("div");
-      missingTitle.className = "pvzhtbot-cc-group-title";
-      missingTitle.style.marginTop = "14px";
-      missingTitle.textContent = `Missing cards (${missingCount})`;
-      details.appendChild(missingTitle);
-      for (const group of result.missingBySideClass) {
-        const groupEl = document.createElement("div");
-        groupEl.className = "pvzhtbot-cc-group";
-        const title = document.createElement("div");
-        title.className = "pvzhtbot-cc-group-title";
-        title.textContent = `${group.side} \u2014 ${group.cardClass} (${group.cards.length})`;
-        groupEl.appendChild(title);
-        const list = document.createElement("div");
-        list.className = "pvzhtbot-cc-card-list";
-        for (const name of group.cards) {
-          const chip = document.createElement("span");
-          chip.className = "pvzhtbot-cc-card-chip";
-          chip.textContent = name;
-          list.appendChild(chip);
-        }
-        groupEl.appendChild(list);
-        details.appendChild(groupEl);
-      }
-    }
-    const underPlaysetCount = result.underPlaysetBySideClass?.reduce((sum, g) => sum + g.cards.length, 0) || 0;
-    if (underPlaysetCount > 0) {
-      const underTitle = document.createElement("div");
-      underTitle.className = "pvzhtbot-cc-group-title";
-      underTitle.style.marginTop = "14px";
-      underTitle.textContent = `Owned but under 4x playset (${underPlaysetCount})`;
-      details.appendChild(underTitle);
-      for (const group of result.underPlaysetBySideClass) {
-        const groupEl = document.createElement("div");
-        groupEl.className = "pvzhtbot-cc-group";
-        const title = document.createElement("div");
-        title.className = "pvzhtbot-cc-group-title";
-        title.textContent = `${group.side} \u2014 ${group.cardClass} (${group.cards.length})`;
-        groupEl.appendChild(title);
-        const list = document.createElement("div");
-        list.className = "pvzhtbot-cc-card-list";
-        for (const { name, quantity } of group.cards) {
-          const chip = document.createElement("span");
-          chip.className = "pvzhtbot-cc-card-chip";
-          chip.textContent = name;
-          const qtySpan = document.createElement("span");
-          qtySpan.className = "pvzhtbot-cc-underplayset-qty";
-          qtySpan.textContent = ` ${quantity}/4`;
-          chip.appendChild(qtySpan);
-          list.appendChild(chip);
-        }
-        groupEl.appendChild(list);
-        details.appendChild(groupEl);
-      }
-    }
-    const note = document.createElement("div");
-    note.style.marginTop = "10px";
-    note.style.fontSize = "11px";
-    note.style.color = "#777";
-    note.textContent = "Hero and Superpower cards are excluded \u2014 the site's own Add Cards flow doesn't offer them either.";
-    details.appendChild(note);
-    return details;
-  }
-  var collectionCompletionPlugin = definePlugin({
-    id: "collection-completion",
-    name: "Collection Completion Tracker",
-    description: "Shows % of normal cards owned and lists what's missing, on the Card Manager page. Updates live when you add/remove/edit cards, no refresh needed.",
-    defaultEnabled: true,
-    async init(context) {
-      injectStylesOnce2();
-      clearStaleCacheEntries();
-      let disposed = false;
-      let injectedSummary = null;
-      let injectedDetails = null;
-      async function recompute({ forceRefresh = false } = {}) {
-        if (disposed || !injectedSummary) return;
-        const valueEl = injectedSummary.querySelector(".pvzhtbot-cc-summary-value");
-        const subEl = injectedSummary.querySelector(".pvzhtbot-cc-summary-sub");
-        valueEl.textContent = "\u2026";
-        valueEl.className = "pvzhtbot-cc-summary-value";
-        subEl.textContent = "";
-        try {
-          const result = await computeCompletion(context.api, { forceRefresh });
-          if (disposed) return;
-          valueEl.textContent = formatCompletionValue(result);
-          subEl.textContent = formatPlaysetSubLine(result);
-          const newDetailsPanel = buildDetailsPanel(result);
-          if (injectedDetails) {
-            injectedDetails.replaceWith(newDetailsPanel);
-          } else {
-            injectedSummary.parentElement.insertAdjacentElement("afterend", newDetailsPanel);
-          }
-          injectedDetails = newDetailsPanel;
-        } catch (err) {
-          valueEl.textContent = "error";
-          valueEl.className = "pvzhtbot-cc-error";
-          context.log(`failed to compute: ${err.message}`, "error");
-        }
-      }
-      function tryInject() {
-        if (disposed || !isCardManagerPage()) return;
-        const summarySection = document.querySelector(SUMMARY_SELECTOR);
-        const content = document.querySelector(CONTENT_SELECTOR);
-        if (!summarySection || !content) return;
-        if (summarySection.querySelector(`[${MARKER_ATTR}="summary"]`)) return;
-        injectedSummary = buildSummaryBox("\u2026");
-        summarySection.appendChild(injectedSummary);
-        injectedDetails = null;
-        recompute();
-      }
-      tryInject();
-      const observer = new MutationObserver(() => tryInject());
-      observer.observe(document.body, { childList: true, subtree: true });
-      const unsubscribe = onCollectionChanged(() => recompute({ forceRefresh: true }));
-      return () => {
-        disposed = true;
-        observer.disconnect();
-        unsubscribe();
-        injectedSummary?.remove();
-        injectedDetails?.remove();
-      };
-    }
-  });
-  var collection_completion_default = collectionCompletionPlugin;
-
   // src/plugins/crash-handler/index.js
   var STATE_KEY = "crashHandler";
   var MAX_LOG = 25;
@@ -2263,12 +1814,12 @@ ${P} .gh-foot a { color: #9a9a9a; }
   });
 
   // src/plugins/deck-buildability/index.js
-  var MARKER_ATTR2 = "data-pvzhtbot-deck-buildability-card";
-  var STYLE_ID5 = "pvzhtbot-deck-buildability-styles";
+  var MARKER_ATTR = "data-pvzhtbot-deck-buildability-card";
+  var STYLE_ID4 = "pvzhtbot-deck-buildability-styles";
   var PANEL_ID2 = "pvzhtbot-deck-buildability-panel";
   var BACKDROP_ID2 = "pvzhtbot-deck-buildability-backdrop";
   var GRID_SELECTOR2 = ".user-dashboard-grid";
-  var STYLES6 = `
+  var STYLES5 = `
 #${BACKDROP_ID2} {
   position: fixed;
   inset: 0;
@@ -2353,11 +1904,11 @@ ${P} .gh-foot a { color: #9a9a9a; }
 }
 #${PANEL_ID2} .pvzhtbot-db-more-btn:hover { background: #262a2e; border-color: #444; }
 `;
-  function injectStylesOnce3() {
-    if (document.getElementById(STYLE_ID5)) return;
+  function injectStylesOnce2() {
+    if (document.getElementById(STYLE_ID4)) return;
     const style = document.createElement("style");
-    style.id = STYLE_ID5;
-    style.textContent = STYLES6;
+    style.id = STYLE_ID4;
+    style.textContent = STYLES5;
     document.head.appendChild(style);
   }
   function isDashboardHome2() {
@@ -2474,7 +2025,7 @@ ${P} .gh-foot a { color: #9a9a9a; }
     return row;
   }
   function createPanel(api) {
-    injectStylesOnce3();
+    injectStylesOnce2();
     const backdrop = document.createElement("div");
     backdrop.id = BACKDROP_ID2;
     const panel = document.createElement("div");
@@ -2625,7 +2176,7 @@ ${P} .gh-foot a { color: #9a9a9a; }
         const card = document.createElement("a");
         card.href = "#";
         card.className = "user-dashboard-card";
-        card.setAttribute(MARKER_ATTR2, "true");
+        card.setAttribute(MARKER_ATTR, "true");
         const label = document.createElement("span");
         label.className = "user-dashboard-card-label";
         label.textContent = "Deck Buildability";
@@ -2644,7 +2195,7 @@ ${P} .gh-foot a { color: #9a9a9a; }
         if (!isDashboardHome2()) return;
         const grid = document.querySelector(GRID_SELECTOR2);
         if (!grid) return;
-        if (grid.querySelector(`[${MARKER_ATTR2}]`)) return;
+        if (grid.querySelector(`[${MARKER_ATTR}]`)) return;
         grid.appendChild(buildCard2());
       }
       tryInject();
@@ -2652,19 +2203,19 @@ ${P} .gh-foot a { color: #9a9a9a; }
       observer.observe(document.body, { childList: true, subtree: true });
       return () => {
         observer.disconnect();
-        document.querySelector(`[${MARKER_ATTR2}]`)?.remove();
+        document.querySelector(`[${MARKER_ATTR}]`)?.remove();
       };
     }
   });
   var deck_buildability_default = deckBuildabilityPlugin;
 
   // src/plugins/hero-reference/index.js
-  var MARKER_ATTR3 = "data-pvzhtbot-hero-reference-card";
-  var STYLE_ID6 = "pvzhtbot-hero-reference-styles";
+  var MARKER_ATTR2 = "data-pvzhtbot-hero-reference-card";
+  var STYLE_ID5 = "pvzhtbot-hero-reference-styles";
   var PANEL_ID3 = "pvzhtbot-hero-reference-panel";
   var BACKDROP_ID3 = "pvzhtbot-hero-reference-backdrop";
   var GRID_SELECTOR3 = ".user-dashboard-grid";
-  var STYLES7 = `
+  var STYLES6 = `
 #${BACKDROP_ID3} {
   position: fixed; inset: 0; z-index: 999996; background: rgba(0,0,0,0.5);
 }
@@ -2698,11 +2249,11 @@ ${P} .gh-foot a { color: #9a9a9a; }
 #${PANEL_ID3} .pvzhtbot-hr-empty, #${PANEL_ID3} .pvzhtbot-hr-loading { color: #999; font-style: italic; }
 #${PANEL_ID3} .pvzhtbot-hr-error { color: #e08080; }
 `;
-  function injectStylesOnce4() {
-    if (document.getElementById(STYLE_ID6)) return;
+  function injectStylesOnce3() {
+    if (document.getElementById(STYLE_ID5)) return;
     const style = document.createElement("style");
-    style.id = STYLE_ID6;
-    style.textContent = STYLES7;
+    style.id = STYLE_ID5;
+    style.textContent = STYLES6;
     document.head.appendChild(style);
   }
   function isDashboardHome3() {
@@ -2799,7 +2350,7 @@ ${P} .gh-foot a { color: #9a9a9a; }
     return wrapper;
   }
   function createPanel2(api) {
-    injectStylesOnce4();
+    injectStylesOnce3();
     const backdrop = document.createElement("div");
     backdrop.id = BACKDROP_ID3;
     const panel = document.createElement("div");
@@ -2887,7 +2438,7 @@ ${P} .gh-foot a { color: #9a9a9a; }
         const card = document.createElement("a");
         card.href = "#";
         card.className = "user-dashboard-card";
-        card.setAttribute(MARKER_ATTR3, "true");
+        card.setAttribute(MARKER_ATTR2, "true");
         const label = document.createElement("span");
         label.className = "user-dashboard-card-label";
         label.textContent = "Hero Reference";
@@ -2906,7 +2457,7 @@ ${P} .gh-foot a { color: #9a9a9a; }
         if (!isDashboardHome3()) return;
         const grid = document.querySelector(GRID_SELECTOR3);
         if (!grid) return;
-        if (grid.querySelector(`[${MARKER_ATTR3}]`)) return;
+        if (grid.querySelector(`[${MARKER_ATTR2}]`)) return;
         grid.appendChild(buildCard2());
       }
       tryInject();
@@ -2914,7 +2465,7 @@ ${P} .gh-foot a { color: #9a9a9a; }
       observer.observe(document.body, { childList: true, subtree: true });
       return () => {
         observer.disconnect();
-        document.querySelector(`[${MARKER_ATTR3}]`)?.remove();
+        document.querySelector(`[${MARKER_ATTR2}]`)?.remove();
       };
     }
   });
@@ -2929,8 +2480,8 @@ ${P} .gh-foot a { color: #9a9a9a; }
     { key: "niche", label: "Niche", group: "Scrappable", hint: "Great in specific strategies, weak elsewhere." }
   ];
   var HEADING_TO_TIER = { craft: "craft", use: "use", hold: "hold", keep: "hold", usable: "usable", niche: "niche" };
-  var STYLE_ID7 = "greenhouse-kos-styles";
-  var STYLES8 = `
+  var STYLE_ID6 = "greenhouse-kos-styles";
+  var STYLES7 = `
 .gh-kos-summary { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
 .gh-kos-stat { background: ${THEME.bgRaised}; border: 1px solid ${THEME.border}; border-radius: 6px; padding: 6px 10px; }
 .gh-kos-stat b { font-size: 15px; display: block; }
@@ -3011,10 +2562,10 @@ ${P} .gh-foot a { color: #9a9a9a; }
     },
     async init(ctx) {
       const { api, options, log: log2 } = ctx;
-      if (!document.getElementById(STYLE_ID7)) {
+      if (!document.getElementById(STYLE_ID6)) {
         const style = document.createElement("style");
-        style.id = STYLE_ID7;
-        style.textContent = STYLES8;
+        style.id = STYLE_ID6;
+        style.textContent = STYLES7;
         document.head.appendChild(style);
       }
       let data = null;
@@ -3174,13 +2725,14 @@ ${P} .gh-foot a { color: #9a9a9a; }
   });
 
   // src/plugins/update-checker/index.js
-  var BUILD_ID_URL = "https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/build-id.txt";
-  var INSTALL_URL = "https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/pvzhtbot-mod.user.js";
+  var BUILD_ID_URL = define_GREENHOUSE_URLS_default.buildId;
+  var INSTALL_URL = define_GREENHOUSE_URLS_default.install;
+  var DEV_SERVER_BUILD_ID_URL = `${define_GREENHOUSE_URLS_default.devServer}/build-id`;
   var CHECK_INTERVAL_MS = 60 * 60 * 1e3;
   var DISMISSED_KEY_PREFIX = "pvzhtbot-mod-update-dismissed-";
   var BANNER_ID = "pvzhtbot-update-banner";
-  var STYLE_ID8 = "pvzhtbot-update-banner-styles";
-  var STYLES9 = `
+  var STYLE_ID7 = "pvzhtbot-update-banner-styles";
+  var STYLES8 = `
 #${BANNER_ID} {
   position: fixed;
   bottom: 16px;
@@ -3208,11 +2760,11 @@ ${P} .gh-foot a { color: #9a9a9a; }
 #${BANNER_ID} .pvzhtbot-update-view { background: #1f6f3f; color: #fff; }
 #${BANNER_ID} .pvzhtbot-update-dismiss { background: #262626; color: #ccc; }
 `;
-  function injectStylesOnce5() {
-    if (document.getElementById(STYLE_ID8)) return;
+  function injectStylesOnce4() {
+    if (document.getElementById(STYLE_ID7)) return;
     const style = document.createElement("style");
-    style.id = STYLE_ID8;
-    style.textContent = STYLES9;
+    style.id = STYLE_ID7;
+    style.textContent = STYLES8;
     document.head.appendChild(style);
   }
   function currentBuildId() {
@@ -3225,7 +2777,7 @@ ${P} .gh-foot a { color: #9a9a9a; }
   }
   function showBanner(latestBuildId, log2) {
     if (document.getElementById(BANNER_ID)) return;
-    injectStylesOnce5();
+    injectStylesOnce4();
     const banner = document.createElement("div");
     banner.id = BANNER_ID;
     const title = document.createElement("div");
@@ -3308,7 +2860,6 @@ ${P} .gh-foot a { color: #9a9a9a; }
   // greenhouse-virtual:greenhouse:plugins
   var greenhouse_plugins_default = [
     { plugin: card_quick_search_default, folder: "card-quick-search", builtIn: true },
-    { plugin: collection_completion_default, folder: "collection-completion", builtIn: true },
     { plugin: crash_handler_default, folder: "crash-handler", builtIn: true },
     { plugin: deck_buildability_default, folder: "deck-buildability", builtIn: true },
     { plugin: hero_reference_default, folder: "hero-reference", builtIn: true },

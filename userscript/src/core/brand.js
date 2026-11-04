@@ -6,7 +6,7 @@ export const BRAND = Object.freeze({
   name: 'Greenhouse',
   tagline: 'An unofficial client mod for pvzhtbot.com',
   logPrefix: '[Greenhouse]',
-  repoUrl: 'https://github.com/KeiraOMG0/pvzhtbot-mod',
+  repoUrl: __GREENHOUSE_URLS__.repo, // injected by build.js from release.config.js
   disclaimer:
     'Unofficial and not affiliated with pvzhtbot.com or its owner. Using it violates pvzhtbot.com\'s Terms of Service — use at your own risk.',
 });

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Greenhouse
 // @namespace    https://pvzhtbot.com
-// @version      0.3.0.202611040112
+// @version      0.3.0.202611040118
 // @description  Greenhouse - an unofficial plugin-based client mod for pvzhtbot.com (collection tracker, deck buildability, hero reference, and more). Not affiliated with pvzhtbot.com; using it violates the site's Terms of Service.
 // @author       Keira
 // @match        https://pvzhtbot.com/*

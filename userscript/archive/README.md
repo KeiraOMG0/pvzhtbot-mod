@@ -62,4 +62,4 @@ Helpers, parsing tricks, or API knowledge another plugin could reuse.
 
 | Plugin | Archived | Reason |
 |---|---|---|
-| _(none yet)_ | | |
+| [`collection-completion`](collection-completion/ARCHIVED.md) | 2026-11-04 | Site added native completion %, 4x-playset %, set/rarity breakdown and a Missing tab to the Card Manager |

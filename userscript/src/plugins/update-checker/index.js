@@ -24,11 +24,11 @@
 import { definePlugin } from '../../core/define-plugin.js';
 import { BRAND } from '../../core/brand.js';
 
-const BUILD_ID_URL =
-  'https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/build-id.txt';
-const INSTALL_URL =
-  'https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/pvzhtbot-mod.user.js';
-const DEV_SERVER_BUILD_ID_URL = 'http://127.0.0.1:8787/build-id';
+// All injected at build time from userscript/release.config.js - see
+// __GREENHOUSE_URLS__ in build.js. Don't hard-code URLs here.
+const BUILD_ID_URL = __GREENHOUSE_URLS__.buildId;
+const INSTALL_URL = __GREENHOUSE_URLS__.install;
+const DEV_SERVER_BUILD_ID_URL = `${__GREENHOUSE_URLS__.devServer}/build-id`;
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // once an hour is plenty for a manual-install userscript
 const DISMISSED_KEY_PREFIX = 'pvzhtbot-mod-update-dismissed-';
 

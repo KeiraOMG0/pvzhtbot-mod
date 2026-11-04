@@ -6,10 +6,11 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DEV_PORT } from './release.config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.join(__dirname, 'dist');
-const PORT = 8787;
+const PORT = DEV_PORT; // from release.config.js
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');

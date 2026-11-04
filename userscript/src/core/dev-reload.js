@@ -8,7 +8,7 @@
 // no-ops forever. It never throws past its own boundary and never blocks
 // boot().
 
-const DEV_SERVER_ORIGIN = 'http://127.0.0.1:8787';
+const DEV_SERVER_ORIGIN = __GREENHOUSE_URLS__.devServer; // injected by build.js from release.config.js
 const POLL_INTERVAL_MS = 1500;
 
 function startDevReloadWatcher(log, onDevModeDetected) {

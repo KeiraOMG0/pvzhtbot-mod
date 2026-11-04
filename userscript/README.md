@@ -61,7 +61,6 @@ Each plugin gets its own folder with an `index.js` that does
 ```
 src/plugins/                  <- built-ins
 ├── card-quick-search/
-├── collection-completion/
 ├── crash-handler/            <- core, required
 ├── deck-buildability/
 ├── hero-reference/
@@ -72,6 +71,7 @@ src/userplugins/              <- your own, same format (README = authoring guide
 src/lib/card-text.js          <- shared card-text helpers (emoji cleanup, stats, name matching)
 archive/                      <- retired plugins, kept as history only.
 ├── README.md                 <- how to archive one + index of what's here
+├── collection-completion/    <- e.g. retired 2026-11-04 (site built it in)
 └── <plugin-id>/              <- NEVER bundled: outside src/, and build.js
     ├── ARCHIVED.md           <- fails the build if src/ imports from it
     └── index.js
@@ -143,79 +143,6 @@ under `src/`.
 
 ## Plugins shipped
 
-### Collection Completion Tracker (`src/plugins/collection-completion/index.js`)
-On `/dashboard/card-manager`, adds a "Completion" stat box (matching the
-site's own `.summary-item` styling next to "Unique Cards"/"Total Copies")
-showing `owned / total normal cards (%)`, with a second line for
-**4x-playset completion** (`owned-at-4x / total (%)`) — a distinct, more
-useful metric than "do I own it at all," since a card you own 1 copy of
-still shows as "owned" in the main stat but not in the playset one. The
-percentage floors instead of rounds (502/503 now correctly shows 99%, not
-a misleading 100% — caught and fixed after live testing surfaced it).
-Below that, a collapsible breakdown: by rarity/set (progress bars), a
-list of fully-missing cards grouped by side + class, and a separate list
-of owned-but-under-4x cards with their current quantity. Built entirely
-on confirmed endpoints (`getAllCardInfo`, `getMyCards`, `getClasses`,
-`getAvailableCards`) — no writes, ever. Hero/Superpower cards are
-correctly excluded since `available/` never returns them (confirmed live
-during API research).
-
-**Live updates, no page reload:** `src/core/collection-watcher.js`
-monkey-patches `window.fetch` once per page load to detect any successful
-write to `.../user-cards/...` (add, quantity change, or delete — whether
-triggered by this plugin, another plugin, or the site's own Card Manager
-Save/Delete buttons) and notifies subscribers. This plugin subscribes and
-immediately recomputes when notified. Results are also cached in
-`sessionStorage`, keyed by a fingerprint of `(unique card count, total
-quantity)` so a stale cache is detected and discarded rather than shown —
-this fixed a real bug caught during live testing where the tracker kept
-showing 503/503 after a card had actually been removed.
-
-**Breaking site change, fixed 2026-09-24:** the site owner reworked the
-"Add Cards" flow server-side to show missing-card ratios. This changed
-`user-cards/available/` in three ways: (1) the `side` query value for
-Plants changed from `"Plant"` to `"Plants"` (Zombie stayed singular —
-inconsistent between sides, confirmed live); (2) the response wrapped
-into `{"authenticated","cards":[...]}` instead of a bare array; (3) most
-importantly, the endpoint's own filtering changed from "return only
-fully-unowned cards, each flagged `already_owned: boolean`" to "return
-every card not at a full 4x playset (unowned OR under-4x), each with
-`owned_quantity: number` instead" — a card fully at 4x is simply absent
-now. Fixed by rebuilding the normal-card universe from `cardinfo/`
-directly (excluding heroes/tokens/superpowers via `set_rarity ===
-'Premium - Hero'`, `set_rarity === 'Token'`, or `description` containing
-`'Superpower'` — verified against the live account, no other
-no-quantity mystery cards exist) instead of relying on `available/`'s
-exclusion list implicitly, since it can no longer be trusted to mean
-"not a normal card." See `site-research/docs/cards.md` for the full
-capture, and `dev/diff-available-vs-mycards.js` for a script that
-independently re-verifies this math directly from the console.
-
-**Cache keyed to build ID, not a hand-bumped version:** `CACHE_KEY`
-includes `__PVZHTBOT_MOD_BUILD_ID__` (the same value `build.js` embeds
-for dev-reload detection), so every rebuild automatically invalidates any
-stale cached result — no more manually bumping a `-v1`/`-v2`/... suffix
-and hoping to remember to do it. A one-time sweep on plugin init clears
-old builds' leftover cache entries from `sessionStorage`.
-
-**Rarity normalization:** the site's own `cardinfo/` data has at least
-one inconsistently-formatted `set_rarity` string (`"Colossal-Super-Rare"`
-on one card vs. `"Colossal - Super-Rare"` on every other card of that
-rarity - see `../site-research/docs/cards.md`), which was silently
-fragmenting the rarity breakdown into a spurious extra 1-card row. Fixed
-by normalizing on the first hyphen only (the tier itself, e.g.
-"Super-Rare", legitimately contains a hyphen that must NOT be touched).
-
-**Rarity breakdown as a matrix, not a list:** rendered as a grid — sets
-(Basic, Premium, Galactic, Colossal, Triassic) as rows, tiers (Common,
-Uncommon, Rare, Super-Rare, Legendary) as columns, each cell showing
-`owned/total` and color-coded (green = complete, amber = partial, red =
-none owned, dark = that set/tier combo doesn't exist, e.g. Premium has no
-Common tier). "Event" has no tier structure so it's rendered as its own
-row spanning all tier columns (one merged cell, same styling/coloring as
-every other cell) instead of a column that would be empty for every
-other set.
-
 ### Deck Buildability Helper (`src/plugins/deck-buildability/index.js`)
 Adds a "Deck Buildability" card to `/dashboard` (styled like the other
 cards). Clicking it opens a centered panel ranking every public community
@@ -254,6 +181,15 @@ badge instead of a toggle (`required: true` on the plugin object; see
    the `.user.js` URL, which makes Tampermonkey show its install/update
    screen. Dismissal is per-build-id and per-session (`sessionStorage`) —
    dismissing a notice for build X doesn't suppress it once X+1 ships.
+
+**Where it publishes** (GitHub repo, branch, file names, dev port) is
+set once in `release.config.js`. `build.js` writes those URLs into the
+userscript header and injects them into the bundle as `__GREENHOUSE_URLS__`
+(used by update-checker, dev-reload, and the settings panel's Source
+link), and `dev-server.js` reads the port from it. Nothing in `src/`
+hard-codes a URL. (Exception: `dev-loader.user.js` is a standalone
+script you paste into Tampermonkey, so its `127.0.0.1:8787` is typed out
+by hand. Update it if you change `DEV_PORT`.)
 
 **Releasing = `npm run build`, commit `dist/`, push to `master`.** Always
 release from `npm run build`, never from a `npm run dev` output: dev
