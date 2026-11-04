@@ -79,6 +79,11 @@ notice when the user changes it.
 - `required: true` — always on, no toggle (core plugins only, please).
 - `priority: 0` — higher starts first (crash-handler is 100).
 - `tags: ['cards']` — searchable in the settings panel.
+- `earlyInit(ctx)` — optional, **synchronous**. It runs at document-start,
+  before the site's own scripts and before `document.body` exists. Use it
+  only for things that must beat the site, like network hooks. `init`
+  still runs later as usual, so make whatever you install idempotent
+  (see `analytics-blocker`).
 
 ## Shared helpers
 
@@ -92,6 +97,9 @@ notice when the user changes it.
 - `../../core/collection-watcher.js` → `onCollectionChanged(cb)` fires after
   any card add/edit/delete, from the site's own UI or a plugin.
 - `../../core/brand.js` → `THEME` colors so your UI matches.
+- `../../core/page-network.js` → `addRequestBlocker((url, kind) => bool)`
+  and `addFetchHandler(({ url, method, passThrough }) => Promise<Response>|undefined)`
+  hook the **page's** own requests. `pageFetch()` fetches through those hooks.
 
 ## Crashes
 

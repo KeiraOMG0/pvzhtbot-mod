@@ -10,7 +10,7 @@
 //   plugin:starting { id }
 //   plugin:started  { id }
 //   plugin:stopped  { id }
-//   plugin:error    { id, phase: 'init'|'teardown'|'option-listener', error }
+//   plugin:error    { id, phase: 'early'|'init'|'teardown'|'option-listener', error }
 //   option:changed  { id, key, value, restartNeeded }
 
 class PluginManager {
@@ -194,6 +194,25 @@ class PluginManager {
   }
 
   // ---- lifecycle ----
+  /**
+   * Runs `earlyInit(ctx)` of every enabled plugin that has one, highest
+   * `priority` first, synchronously at document-start - before the
+   * site's own scripts and before the DOM exists (no document.body).
+   * For hooks that must beat the site (network interception). Call once,
+   * before startEnabledPlugins(); `init` still runs later as normal.
+   */
+  runEarlyHooks() {
+    const ordered = [...this._plugins.values()].sort((a, b) => (b.priority || 0) - (a.priority || 0));
+    for (const plugin of ordered) {
+      if (typeof plugin.earlyInit !== 'function' || !this.isEnabled(plugin.id)) continue;
+      try {
+        plugin.earlyInit(this._contextFor(plugin.id));
+      } catch (err) {
+        this._recordError(plugin.id, 'early', err);
+      }
+    }
+  }
+
   /** Starts every enabled plugin, highest `priority` first. Call once at startup. */
   async startEnabledPlugins() {
     const ordered = [...this._plugins.values()].sort((a, b) => (b.priority || 0) - (a.priority || 0));

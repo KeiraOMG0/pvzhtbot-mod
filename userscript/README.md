@@ -8,14 +8,21 @@ README for the ToS / non-affiliation disclaimer.
 ## Architecture
 
 ```
-Tampermonkey (userscript-header.js)
+Tampermonkey (userscript-header.js, @run-at document-start)
     -> Core loader (src/core/loader.js)
+        -> at document-start (before the site's scripts): register plugins,
+           run enabled plugins' earlyInit() hooks
+        -> on DOMContentLoaded: UI + every enabled plugin's init()
         -> double-load guard (data-greenhouse-loaded on <html>) - if the
            installed build AND the dev loader both run, only one boots
         -> Site API wrapper (src/api/site-api.js)   -- confirmed endpoints only
         -> Backend client seam (src/api/backend-client.js)  -- unused until needed
         -> Settings store (src/core/storage.js)     -- GM_getValue/GM_setValue,
            incl. per-plugin option values
+        -> Page network hooks (src/core/page-network.js) -- lets plugins
+           block or answer the PAGE's own fetch/sendBeacon/XHR/<script src>
+           (analytics-blocker, api-cache). The mod's own API calls go
+           through the same hooked fetch (pageFetch) so they share the cache
         -> Collection watcher (src/core/collection-watcher.js) -- detects any
            user-cards/ write (this mod's or the site's own UI) so plugins
            can live-update without a page reload
@@ -46,6 +53,9 @@ Tampermonkey (userscript-header.js)
   Verified live 2026-11-03 with a deliberately-throwing test plugin:
   first load = toast, second load = auto-disabled, third load = stays
   off, other plugins unaffected throughout.
+- **analytics-blocker** (priority 90) — blocks Cloudflare + Vercel
+  visitor analytics; installed at document-start via `earlyInit`. No
+  opt-out options by design. See below.
 - **update-checker** — see below.
 
 ### archive/
@@ -110,6 +120,12 @@ whenever a new build appears.
    `@connect 127.0.0.1` — already in the header.
 3. Edit `src/`, save. The watcher rebuilds, the open pvzhtbot.com tab
    detects the new build within ~1.5s and reloads itself automatically.
+
+Because `dev-loader.user.js` loads the build asynchronously, `earlyInit`
+hooks can land after the site's first requests in dev. They still apply
+to everything after that. Only the installed build is guaranteed to
+beat the site's bundle. If you pasted the dev loader before 0.3.1,
+re-paste it to pick up `@run-at document-start`.
 
 No floating button — only the `/dashboard` "Mod Settings" card opens
 settings, matching the site's own navigation instead of an overlay on
@@ -217,6 +233,44 @@ tags are replaced with their readable name (`<:Health:...>` → `Health`)
 both in the title and the effect body — the original research only
 checked the title line; live testing here found the same raw-tag noise
 throughout the body text too and fixed it there as well.
+
+### Analytics Blocker (`src/plugins/analytics-blocker/index.js`)
+
+Blocks Cloudflare Web Analytics (`static.cloudflareinsights.com` beacon,
+injected into the HTML by Cloudflare, reporting to `/cdn-cgi/rum`) and
+Vercel Web Analytics (`/_vercel/insights/*`, injected by the site's
+bundle). See `site-research/docs/privacy.md` for what they collect.
+It works in two layers. The scripts are never inserted (dynamic
+`appendChild`/`insertBefore`) or are neutralized as the parser adds
+them. Any beacon, fetch or XHR to their collection endpoints is also
+dropped. Required (always on, no options besides console logging). The
+site's own API is untouched.
+
+### Faster Loading — API Cache (`src/plugins/api-cache/index.js`)
+
+Optional, **off by default** (it trades up to `ttlMinutes` of staleness
+for speed) — enable it in the Greenhouse panel.
+
+Every API response is `Cache-Control: max-age=0, must-revalidate` with no
+validator, so each page view re-downloads cardinfo (~390 KB), decklists
+(~140 KB), legacy decklists (~170 KB), public decks (~135 KB), etc.
+This plugin answers GETs for a fixed allowlist of **public** paths. Each
+was verified byte-identical with and without a login session. Answers
+come from Cache Storage (`greenhouse-api-v1`):
+- **Fresh** (younger than `ttlMinutes`, default 10): served instantly
+  with no request.
+- **Stale:** served instantly and refreshed in the background (`instant`
+  on). With `instant` off, it waits for the network.
+- **Network failure or 5xx:** the cached copy is served.
+
+Concurrent requests for one URL share a download. `user-cards`, profile,
+auth, CSRF, decks and all writes are never touched. Turning the plugin
+off clears the cache; so does `__greenhouse.clearApiCache()` in the
+console. `__greenhouse.apiCacheStats()` shows hits and misses.
+
+Verified 2026-11-03: across repeated SPA navigations, cardinfo and
+decklists were each downloaded once while `user-cards` was refetched
+every time. After a full reload they were served from Cache Storage.
 
 ### Card Quick Search (`src/plugins/card-quick-search/index.js`)
 A hotkey (option: Ctrl+K default, Alt+K, or `/`) opens a search over all

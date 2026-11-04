@@ -29,6 +29,8 @@ change their settings (⚙).
 | **Keep or Scrap Advisor** | Checks the site's Keep or Scrap guide against your collection: which recommended cards (especially *Craft* picks) you're still missing, per class. |
 | **Deck Buildability Helper** | Ranks every community deck by how much of it you can build right now, with exactly which cards you're missing. |
 | **Hero Reference** | A searchable hero + superpower lookup (the site's hero page is a static image grid). |
+| **Analytics Blocker** *(core, always on)* | Blocks the site's Cloudflare and Vercel visitor analytics (page views, referrer, device/browser, country, load timings), which its privacy policy doesn't mention. Nothing on the site depends on them. |
+| **Faster Loading (API Cache)** *(optional, off by default)* | The site re-downloads ~1 MB of card/deck data on every page. This caches the shared, public data so pages load instantly and refresh it in the background. Your own collection and decks are never cached. |
 | **Crash Handler** *(core, always on)* | If a plugin crashes it tells you, and it auto-disables any plugin that keeps failing or freezes the page, so one broken plugin can't break the site for you. |
 | **Update Checker** *(core, always on)* | Tells you when a newer Greenhouse build is out. |
 

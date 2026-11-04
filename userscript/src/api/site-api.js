@@ -3,6 +3,12 @@
 // manually; that copy is the source of truth for what's been verified
 // against docs/api.md in site-research/).
 
+import { pageFetch } from '../core/page-network.js';
+
+// Requests go through the page's (hooked) fetch so the mod's own calls
+// share the api-cache plugin with the site instead of re-downloading.
+const SITE_API_BASE = 'https://api.pvzhtbot.com/tbotapp';
+
 class PvzhtbotApiError extends Error {
   constructor(message, { status, url, body } = {}) {
     super(message);
@@ -14,14 +20,14 @@ class PvzhtbotApiError extends Error {
 }
 
 class PvzhtbotApi {
-  constructor({ baseUrl = 'https://api.pvzhtbot.com/tbotapp' } = {}) {
+  constructor({ baseUrl = SITE_API_BASE } = {}) {
     this.baseUrl = baseUrl;
     this._csrfToken = null;
   }
 
   async _get(path) {
     const url = `${this.baseUrl}${path}`;
-    const res = await fetch(url, {
+    const res = await pageFetch(url, {
       credentials: 'include',
       headers: { Accept: 'application/json' },
     });
@@ -52,7 +58,7 @@ class PvzhtbotApi {
     const url = `${this.baseUrl}${path}`;
     const token = await this._getCsrfToken();
     const doFetch = (csrfToken) =>
-      fetch(url, {
+      pageFetch(url, {
         method,
         credentials: 'include',
         headers: {
@@ -225,4 +231,4 @@ class PvzhtbotApi {
   }
 }
 
-export { PvzhtbotApi, PvzhtbotApiError };
+export { PvzhtbotApi, PvzhtbotApiError, SITE_API_BASE };

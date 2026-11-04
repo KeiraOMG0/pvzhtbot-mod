@@ -1,23 +1,131 @@
 // ==UserScript==
 // @name         Greenhouse
 // @namespace    https://pvzhtbot.com
-// @version      0.3.0.202611040118
+// @version      0.3.1.202611040246
 // @description  Greenhouse - an unofficial plugin-based client mod for pvzhtbot.com (collection tracker, deck buildability, hero reference, and more). Not affiliated with pvzhtbot.com; using it violates the site's Terms of Service.
 // @author       Keira
 // @match        https://pvzhtbot.com/*
-// @run-at       document-idle
+// @run-at       document-start
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        unsafeWindow
 // @updateURL    https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/pvzhtbot-mod.meta.js
 // @downloadURL  https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/pvzhtbot-mod.user.js
 // ==/UserScript==
-var __PVZHTBOT_MOD_BUILD_ID__ = "1793755083456";
+var __PVZHTBOT_MOD_BUILD_ID__ = "1793760385740";
 (() => {
   // <define:__GREENHOUSE_URLS__>
   var define_GREENHOUSE_URLS_default = { repo: "https://github.com/KeiraOMG0/pvzhtbot-mod", install: "https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/pvzhtbot-mod.user.js", meta: "https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/pvzhtbot-mod.meta.js", buildId: "https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/build-id.txt", devServer: "http://127.0.0.1:8787" };
 
+  // src/core/page-network.js
+  var pageWindow = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
+  var blockers = /* @__PURE__ */ new Set();
+  var fetchHandlers = /* @__PURE__ */ new Set();
+  var installed = false;
+  var nativeFetch = null;
+  function toUrl(input) {
+    try {
+      const raw = typeof input === "string" ? input : input?.href ?? input?.url ?? String(input);
+      return new URL(raw, pageWindow.location.href);
+    } catch {
+      return null;
+    }
+  }
+  function isBlocked(url, kind) {
+    if (!url || blockers.size === 0) return false;
+    for (const fn of blockers) {
+      try {
+        if (fn(url, kind)) return true;
+      } catch (err) {
+        console.error("[Greenhouse] request blocker threw", err);
+      }
+    }
+    return false;
+  }
+  function isBlockedScript(node) {
+    return node?.nodeName === "SCRIPT" && Boolean(node.src) && isBlocked(toUrl(node.src), "script");
+  }
+  function install() {
+    if (installed) return;
+    installed = true;
+    nativeFetch = pageWindow.fetch;
+    pageWindow.fetch = function fetch2(input, init) {
+      const url = toUrl(input);
+      const passThrough = () => nativeFetch.call(pageWindow, input, init);
+      if (isBlocked(url, "fetch")) {
+        return Promise.resolve(new pageWindow.Response(null, { status: 204 }));
+      }
+      if (url && fetchHandlers.size) {
+        const method = String(init?.method || typeof input === "object" && input?.method || "GET").toUpperCase();
+        for (const handler of fetchHandlers) {
+          try {
+            const answer = handler({ url, method, passThrough });
+            if (answer) return answer;
+          } catch (err) {
+            console.error("[Greenhouse] fetch handler threw", err);
+          }
+        }
+      }
+      return passThrough();
+    };
+    const navProto = pageWindow.Navigator?.prototype;
+    if (navProto?.sendBeacon) {
+      const nativeBeacon = navProto.sendBeacon;
+      navProto.sendBeacon = function sendBeacon(url, data) {
+        if (isBlocked(toUrl(url), "beacon")) return true;
+        return nativeBeacon.call(this, url, data);
+      };
+    }
+    const xhrProto = pageWindow.XMLHttpRequest?.prototype;
+    if (xhrProto) {
+      const nativeOpen = xhrProto.open;
+      const nativeSend = xhrProto.send;
+      xhrProto.open = function open(method, url, ...rest) {
+        this.__ghBlocked = isBlocked(toUrl(url), "xhr");
+        return nativeOpen.call(this, method, url, ...rest);
+      };
+      xhrProto.send = function send(body) {
+        if (this.__ghBlocked) return void 0;
+        return nativeSend.call(this, body);
+      };
+    }
+    const nodeProto = pageWindow.Node?.prototype;
+    if (nodeProto) {
+      for (const name of ["appendChild", "insertBefore"]) {
+        const native = nodeProto[name];
+        nodeProto[name] = function(node, ...rest) {
+          if (isBlockedScript(node)) return node;
+          return native.call(this, node, ...rest);
+        };
+      }
+    }
+    new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (isBlockedScript(node)) {
+            node.type = "javascript/blocked";
+            node.remove();
+          }
+        }
+      }
+    }).observe(document.documentElement || document, { childList: true, subtree: true });
+  }
+  function addRequestBlocker(fn) {
+    install();
+    blockers.add(fn);
+    return () => blockers.delete(fn);
+  }
+  function addFetchHandler(fn) {
+    install();
+    fetchHandlers.add(fn);
+    return () => fetchHandlers.delete(fn);
+  }
+  function pageFetch(input, init) {
+    return pageWindow.fetch(input, init);
+  }
+
   // src/api/site-api.js
+  var SITE_API_BASE = "https://api.pvzhtbot.com/tbotapp";
   var PvzhtbotApiError = class extends Error {
     constructor(message, { status, url, body } = {}) {
       super(message);
@@ -28,13 +136,13 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1793755083456";
     }
   };
   var PvzhtbotApi = class {
-    constructor({ baseUrl = "https://api.pvzhtbot.com/tbotapp" } = {}) {
+    constructor({ baseUrl = SITE_API_BASE } = {}) {
       this.baseUrl = baseUrl;
       this._csrfToken = null;
     }
     async _get(path) {
       const url = `${this.baseUrl}${path}`;
-      const res = await fetch(url, {
+      const res = await pageFetch(url, {
         credentials: "include",
         headers: { Accept: "application/json" }
       });
@@ -62,7 +170,7 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1793755083456";
     async _write(method, path, body) {
       const url = `${this.baseUrl}${path}`;
       const token = await this._getCsrfToken();
-      const doFetch = (csrfToken) => fetch(url, {
+      const doFetch = (csrfToken) => pageFetch(url, {
         method,
         credentials: "include",
         headers: {
@@ -476,6 +584,24 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1793755083456";
       };
     }
     // ---- lifecycle ----
+    /**
+     * Runs `earlyInit(ctx)` of every enabled plugin that has one, highest
+     * `priority` first, synchronously at document-start - before the
+     * site's own scripts and before the DOM exists (no document.body).
+     * For hooks that must beat the site (network interception). Call once,
+     * before startEnabledPlugins(); `init` still runs later as normal.
+     */
+    runEarlyHooks() {
+      const ordered = [...this._plugins.values()].sort((a, b) => (b.priority || 0) - (a.priority || 0));
+      for (const plugin of ordered) {
+        if (typeof plugin.earlyInit !== "function" || !this.isEnabled(plugin.id)) continue;
+        try {
+          plugin.earlyInit(this._contextFor(plugin.id));
+        } catch (err) {
+          this._recordError(plugin.id, "early", err);
+        }
+      }
+    }
     /** Starts every enabled plugin, highest `priority` first. Call once at startup. */
     async startEnabledPlugins() {
       const ordered = [...this._plugins.values()].sort((a, b) => (b.priority || 0) - (a.priority || 0));
@@ -1100,6 +1226,9 @@ ${P} .gh-foot a { color: #9a9a9a; }
     if (!ID_RE.test(plugin.id || "")) throw new Error(`${where}: id must be kebab-case`);
     if (!plugin.name) throw new Error(`${where}: missing name`);
     if (typeof plugin.init !== "function") throw new Error(`${where}: missing init()`);
+    if (plugin.earlyInit != null && typeof plugin.earlyInit !== "function") {
+      throw new Error(`${where}: earlyInit must be a function`);
+    }
     for (const [key, opt] of Object.entries(plugin.options || {})) {
       if (!OPTION_TYPES.has(opt?.type)) {
         throw new Error(`${where}: option "${key}" has invalid type "${opt?.type}"`);
@@ -1121,6 +1250,228 @@ ${P} .gh-foot a { color: #9a9a9a; }
       ...plugin
     };
   }
+
+  // src/plugins/analytics-blocker/index.js
+  var RULES = [
+    {
+      // Cloudflare Web Analytics
+      match: (u) => u.hostname === "static.cloudflareinsights.com" || u.hostname === "cloudflareinsights.com" || u.hostname.endsWith("pvzhtbot.com") && u.pathname.startsWith("/cdn-cgi/rum")
+    },
+    {
+      // Vercel Web Analytics / Speed Insights
+      match: (u) => u.hostname === "va.vercel-scripts.com" || u.hostname.endsWith("pvzhtbot.com") && (u.pathname.startsWith("/_vercel/insights") || u.pathname.startsWith("/_vercel/speed-insights"))
+    }
+  ];
+  var removeBlocker = null;
+  var blockedCount = 0;
+  function install2(ctx) {
+    if (removeBlocker) return;
+    removeBlocker = addRequestBlocker((url, kind) => {
+      if (!RULES.some((r) => r.match(url))) return false;
+      blockedCount++;
+      if (ctx.options.get("logBlocked")) ctx.log(`blocked ${kind} ${url.origin}${url.pathname}`);
+      return true;
+    });
+  }
+  var analyticsBlockerPlugin = definePlugin({
+    id: "analytics-blocker",
+    name: "Analytics Blocker",
+    description: "Blocks the site's Cloudflare and Vercel visitor-analytics scripts (page views, referrer, device/browser, country, load timings). Site features are unaffected.",
+    tags: ["privacy"],
+    defaultEnabled: true,
+    required: true,
+    // core privacy plugin: always on, no toggle, nothing to opt out of
+    priority: 90,
+    // after crash-handler, before everything else
+    options: {
+      logBlocked: {
+        type: "boolean",
+        label: "Log each blocked request to the console",
+        default: false
+      }
+    },
+    earlyInit(ctx) {
+      install2(ctx);
+    },
+    async init(ctx) {
+      install2(ctx);
+      ctx.log(`active (${blockedCount} request(s) blocked so far this page)`);
+      return () => {
+        removeBlocker?.();
+        removeBlocker = null;
+      };
+    }
+  });
+  var analytics_blocker_default = analyticsBlockerPlugin;
+
+  // src/plugins/api-cache/index.js
+  var CACHE_NAME = "greenhouse-api-v1";
+  var API = new URL(SITE_API_BASE);
+  var CACHEABLE_PATHS = new Set(
+    [
+      "cardinfo/",
+      "heroinfo/",
+      "decklists/",
+      "legacy-decklists/",
+      "public-decks/",
+      "keeporscrap/",
+      "site-updates/",
+      "servers/",
+      "card-count/",
+      "decklist-count/",
+      "legacy-decklist-count/",
+      "public-user-decks-count/"
+    ].map((p) => `${API.pathname.replace(/\/$/, "")}/${p}`)
+  );
+  var memory = /* @__PURE__ */ new Map();
+  var inflight = /* @__PURE__ */ new Map();
+  var stats = { hit: 0, stale: 0, miss: 0, fallback: 0 };
+  var removeHandler = null;
+  function isCacheable(url, method) {
+    return method === "GET" && url.origin === API.origin && CACHEABLE_PATHS.has(url.pathname);
+  }
+  async function openCache() {
+    try {
+      return await caches.open(CACHE_NAME);
+    } catch {
+      return null;
+    }
+  }
+  async function readEntry(key) {
+    if (memory.has(key)) return memory.get(key);
+    const cache = await openCache();
+    const res = await cache?.match(key);
+    if (!res) return null;
+    const entry = {
+      text: await res.text(),
+      status: res.status,
+      contentType: res.headers.get("content-type") || "application/json",
+      at: Number(res.headers.get("x-greenhouse-cached-at")) || 0
+    };
+    memory.set(key, entry);
+    return entry;
+  }
+  async function writeEntry(key, entry) {
+    memory.set(key, entry);
+    const cache = await openCache();
+    await cache?.put(
+      key,
+      new Response(entry.text, {
+        status: entry.status,
+        headers: { "content-type": entry.contentType, "x-greenhouse-cached-at": String(entry.at) }
+      })
+    );
+  }
+  function download(key, passThrough) {
+    if (inflight.has(key)) return inflight.get(key);
+    const p = (async () => {
+      const res = await passThrough();
+      const entry = {
+        text: await res.text(),
+        status: res.status,
+        contentType: res.headers.get("content-type") || "application/json",
+        at: Date.now()
+      };
+      if (res.ok) await writeEntry(key, entry).catch(() => {
+      });
+      return entry;
+    })();
+    inflight.set(key, p);
+    p.finally(() => inflight.delete(key)).catch(() => {
+    });
+    return p;
+  }
+  function toPageResponse(entry) {
+    return new pageWindow.Response(entry.text, {
+      status: entry.status,
+      headers: { "content-type": entry.contentType }
+    });
+  }
+  async function serve(key, passThrough, ctx) {
+    const ttlMs = ctx.options.get("ttlMinutes") * 6e4;
+    const cached = await readEntry(key).catch(() => null);
+    const age = cached ? Date.now() - cached.at : Infinity;
+    if (cached && age < ttlMs) {
+      stats.hit++;
+      return toPageResponse(cached);
+    }
+    if (cached && ctx.options.get("instant")) {
+      stats.stale++;
+      download(key, passThrough).catch((err) => ctx.log(`background refresh failed: ${err.message}`, "error"));
+      return toPageResponse(cached);
+    }
+    stats.miss++;
+    try {
+      const fresh = await download(key, passThrough);
+      if (fresh.status >= 500 && cached) {
+        stats.fallback++;
+        return toPageResponse(cached);
+      }
+      return toPageResponse(fresh);
+    } catch (err) {
+      if (cached) {
+        stats.fallback++;
+        return toPageResponse(cached);
+      }
+      throw err;
+    }
+  }
+  async function clearCache() {
+    memory.clear();
+    try {
+      await caches.delete(CACHE_NAME);
+    } catch {
+    }
+  }
+  function install3(ctx) {
+    if (removeHandler) return;
+    removeHandler = addFetchHandler(({ url, method, passThrough }) => {
+      if (!isCacheable(url, method)) return void 0;
+      if (ctx.options.get("ttlMinutes") <= 0) return void 0;
+      return serve(url.href, passThrough, ctx);
+    });
+    pageWindow.__greenhouse = {
+      ...pageWindow.__greenhouse || {},
+      clearApiCache: clearCache,
+      apiCacheStats: () => ({ ...stats, entriesInMemory: memory.size })
+    };
+  }
+  var apiCachePlugin = definePlugin({
+    id: "api-cache",
+    name: "Faster Loading (API Cache)",
+    description: "Caches the site\u2019s large shared data (cards, heroes, decklists, Keep or Scrap, updates) so pages load instantly instead of re-downloading ~1 MB every visit. Your own collection and decks are never cached.",
+    tags: ["performance"],
+    defaultEnabled: false,
+    // opt-in: trades up to ttlMinutes of staleness for speed
+    options: {
+      ttlMinutes: {
+        type: "number",
+        label: "Treat cached data as fresh for (minutes)",
+        description: "Within this window, no request is made at all. 0 turns caching off.",
+        default: 10,
+        min: 0,
+        max: 1440
+      },
+      instant: {
+        type: "boolean",
+        label: "Show cached data instantly, refresh in the background",
+        description: "After the window above, still show the cached copy right away and update it for next time. Off = wait for fresh data.",
+        default: true
+      }
+    },
+    earlyInit(ctx) {
+      install3(ctx);
+    },
+    async init(ctx) {
+      install3(ctx);
+      return () => {
+        removeHandler?.();
+        removeHandler = null;
+        clearCache();
+      };
+    }
+  });
+  var api_cache_default = apiCachePlugin;
 
   // src/ui/modal.js
   var STYLE_ID2 = "greenhouse-modal-styles";
@@ -1230,9 +1581,9 @@ ${P} .gh-foot a { color: #9a9a9a; }
   function cleanEmoji(text) {
     return String(text || "").replace(/<a?:[A-Za-z0-9_-]+:\d+>\s*(?=__)/g, "").replace(/(\d)<a?:([A-Za-z0-9_-]+):\d+>/g, "$1 $2").replace(/<a?:([A-Za-z0-9_-]+):\d+>/g, "$1").replace(/\*\*([^*]+)\*\*/g, "$1").replace(/__([^_]+)__/g, "$1").replace(/\r/g, "").trim();
   }
-  function parseStats(stats) {
+  function parseStats(stats2) {
     const out = { cost: null, strength: null, strengthIcon: null, health: null, healthIcon: null };
-    const tokens = [...String(stats || "").matchAll(/(\S+)\s*<a?:([A-Za-z]+):\d+>/g)].map((m) => ({
+    const tokens = [...String(stats2 || "").matchAll(/(\S+)\s*<a?:([A-Za-z]+):\d+>/g)].map((m) => ({
       value: m[1],
       icon: m[2]
     }));
@@ -1367,7 +1718,7 @@ ${P} .gh-foot a { color: #9a9a9a; }
   }
   function indexCards(cards) {
     return cards.map((c) => {
-      const stats = parseStats(c.stats);
+      const stats2 = parseStats(c.stats);
       const ability = cleanEmoji(c.ability);
       const traits = cleanEmoji(c.traits);
       const rarity = String(c.set_rarity || "").replace(/^(\w+)\s*-\s*/, "$1 - ");
@@ -1382,7 +1733,7 @@ ${P} .gh-foot a { color: #9a9a9a; }
         ability,
         flavor: cleanEmoji(c.flavor_text),
         rarity,
-        stats,
+        stats: stats2,
         thumb: c.thumbnail,
         aliases: normName(c.aliases === "NULL" ? "" : c.aliases),
         hay: normName([c.card_name, c.aliases, c.card_type, c.description, traits, ability, rarity].join(" | "))
@@ -1522,10 +1873,10 @@ ${P} .gh-foot a { color: #9a9a9a; }
         const name = document.createElement("span");
         name.className = "gh-cqs-name";
         name.textContent = card.name;
-        const stats = document.createElement("span");
-        stats.className = "gh-cqs-stats";
-        stats.textContent = statLine(card.stats);
-        top.append(name, stats);
+        const stats2 = document.createElement("span");
+        stats2.className = "gh-cqs-stats";
+        stats2.textContent = statLine(card.stats);
+        top.append(name, stats2);
         const pill = ownedPill(card);
         if (pill) top.appendChild(pill);
         const sub = document.createElement("div");
@@ -1807,8 +2158,8 @@ ${P} .gh-foot a { color: #9a9a9a; }
           writeState(settings, s);
         }
       };
-      const pageWindow2 = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
-      pageWindow2.__greenhouse = { ...pageWindow2.__greenhouse || {}, ...api };
+      const pageWindow3 = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
+      pageWindow3.__greenhouse = { ...pageWindow3.__greenhouse || {}, ...api };
       return () => offs.forEach((off) => off());
     }
   });
@@ -2859,6 +3210,8 @@ ${P} .gh-foot a { color: #9a9a9a; }
 
   // greenhouse-virtual:greenhouse:plugins
   var greenhouse_plugins_default = [
+    { plugin: analytics_blocker_default, folder: "analytics-blocker", builtIn: true },
+    { plugin: api_cache_default, folder: "api-cache", builtIn: true },
     { plugin: card_quick_search_default, folder: "card-quick-search", builtIn: true },
     { plugin: crash_handler_default, folder: "crash-handler", builtIn: true },
     { plugin: deck_buildability_default, folder: "deck-buildability", builtIn: true },
@@ -2872,6 +3225,10 @@ ${P} .gh-foot a { color: #9a9a9a; }
   function log(message, level = "info") {
     const fn = level === "error" ? console.error : console.log;
     fn(`${BRAND.logPrefix} ${message}`);
+  }
+  function whenDomReady() {
+    if (document.readyState !== "loading") return Promise.resolve();
+    return new Promise((resolve) => document.addEventListener("DOMContentLoaded", resolve, { once: true }));
   }
   async function boot() {
     const settings = new SettingsStore();
@@ -2887,6 +3244,8 @@ ${P} .gh-foot a { color: #9a9a9a; }
         log(`could not register plugin from folder "${folder}": ${err.message}`, "error");
       }
     }
+    pluginManager.runEarlyHooks();
+    await whenDomReady();
     const panel = createSettingsPanel(pluginManager);
     mountDashboardCard(() => panel.open());
     await pluginManager.startEnabledPlugins();
@@ -2931,7 +3290,7 @@ Open the Tampermonkey dashboard and delete "PvZHTBot Mod" (keep "Greenhouse").`,
       });
     }, 3e3);
   }
-  var pageWindow = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
+  var pageWindow2 = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
   if (document.documentElement.hasAttribute(LOADED_ATTR)) {
     log(
       `another copy (${document.documentElement.getAttribute(LOADED_ATTR)}) already loaded on this page - skipping. Disable either the installed script or the dev loader in Tampermonkey.`,
@@ -2941,6 +3300,6 @@ Open the Tampermonkey dashboard and delete "PvZHTBot Mod" (keep "Greenhouse").`,
     const buildId = typeof __PVZHTBOT_MOD_BUILD_ID__ !== "undefined" ? __PVZHTBOT_MOD_BUILD_ID__ : "unknown";
     document.documentElement.setAttribute(LOADED_ATTR, `build ${buildId}`);
     const booted = boot();
-    pageWindow.__greenhouse = { ...pageWindow.__greenhouse || {}, boot: booted, buildId };
+    pageWindow2.__greenhouse = { ...pageWindow2.__greenhouse || {}, boot: booted, buildId };
   }
 })();

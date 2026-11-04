@@ -5,8 +5,12 @@
 //   3. Register every plugin - discovered automatically at build time from
 //      src/plugins/*/index.js and src/userplugins/*/index.js (see the
 //      `greenhouse:plugins` virtual module in build.js). No manual list.
-//   4. Mount the settings panel UI
-//   5. Start any plugins the user already has enabled
+//   4. Run enabled plugins' earlyInit hooks - immediately, at
+//      document-start (@run-at in userscript-header.js), before the
+//      site's own scripts run. Network hooks (analytics-blocker,
+//      api-cache) need that head start.
+//   5. Once the DOM is ready: mount the settings panel UI and start any
+//      plugins the user already has enabled (their normal init).
 
 import { PvzhtbotApi } from '../api/site-api.js';
 import { BackendClient } from '../api/backend-client.js';
@@ -27,6 +31,11 @@ const LOADED_ATTR = 'data-greenhouse-loaded';
 function log(message, level = 'info') {
   const fn = level === 'error' ? console.error : console.log;
   fn(`${BRAND.logPrefix} ${message}`);
+}
+
+function whenDomReady() {
+  if (document.readyState !== 'loading') return Promise.resolve();
+  return new Promise((resolve) => document.addEventListener('DOMContentLoaded', resolve, { once: true }));
 }
 
 async function boot() {
@@ -50,6 +59,12 @@ async function boot() {
       log(`could not register plugin from folder "${folder}": ${err.message}`, 'error');
     }
   }
+
+  // Synchronous, so it runs before this function's first await - i.e.
+  // still at document-start, ahead of the site's bundle.
+  pluginManager.runEarlyHooks();
+
+  await whenDomReady();
 
   const panel = createSettingsPanel(pluginManager);
   mountDashboardCard(() => panel.open());

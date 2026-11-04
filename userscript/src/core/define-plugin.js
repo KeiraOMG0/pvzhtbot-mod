@@ -24,6 +24,9 @@
 //                    choices: [{ label: 'A', value: 'a' }, { label: 'B', value: 'b' }] },
 //       // any option may also set `description` and `restartNeeded: true`
 //     },
+//     earlyInit(ctx) { ... },      // optional, SYNC: runs at document-start,
+//                                  // before the site's scripts and the DOM
+//                                  // (no document.body). For network hooks.
 //     async init(ctx) { ... return teardownFn; },
 //   });
 //
@@ -43,6 +46,9 @@ function definePlugin(plugin) {
   if (!ID_RE.test(plugin.id || '')) throw new Error(`${where}: id must be kebab-case`);
   if (!plugin.name) throw new Error(`${where}: missing name`);
   if (typeof plugin.init !== 'function') throw new Error(`${where}: missing init()`);
+  if (plugin.earlyInit != null && typeof plugin.earlyInit !== 'function') {
+    throw new Error(`${where}: earlyInit must be a function`);
+  }
 
   for (const [key, opt] of Object.entries(plugin.options || {})) {
     if (!OPTION_TYPES.has(opt?.type)) {

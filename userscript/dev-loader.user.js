@@ -4,7 +4,7 @@
 // @version      0.2.0
 // @description  Dev-only loader that fetches the latest local build fresh on every page load (no @require caching), so the real script never needs re-pasting into Tampermonkey while iterating.
 // @match        https://pvzhtbot.com/*
-// @run-at       document-idle
+// @run-at       document-start
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
