@@ -166,8 +166,19 @@ async function checkOnce(context) {
 
   try {
     const latest = await fetchLatestBuildId();
-    if (latest && latest !== running && !wasDismissed(latest)) {
+    // Build ids are Date.now() timestamps, so compare as numbers and only
+    // nag when GitHub's build is strictly NEWER. A plain !== check
+    // misfired right after a push: raw.githubusercontent.com caches files
+    // for ~5 minutes, so it can serve the PREVIOUS build-id.txt to a user
+    // who already has the new build (seen live 2026-11-04). Older or
+    // unparseable remote ids are ignored.
+    const latestN = Number(latest);
+    const runningN = Number(running);
+    const isNewer = Number.isFinite(latestN) && Number.isFinite(runningN) && latestN > runningN;
+    if (isNewer && !wasDismissed(latest)) {
       showBanner(latest, context.log);
+    } else if (!isNewer) {
+      document.getElementById(BANNER_ID)?.remove();
     }
   } catch (err) {
     // Network hiccup or GitHub rate limit - not worth surfacing to the

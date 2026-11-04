@@ -13,7 +13,7 @@
 import { BRAND } from '../core/brand.js';
 
 const GRID_SELECTOR = '.user-dashboard-grid';
-const CARD_MARKER_ATTR = 'data-pvzhtbot-mod-card';
+const CARD_MARKER_ATTR = 'data-greenhouse-card';
 
 function buildCard(onOpenSettings) {
   const card = document.createElement('a');

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Greenhouse
 // @namespace    https://pvzhtbot.com
-// @version      0.3.0.202611040107
+// @version      0.3.0.202611040112
 // @description  Greenhouse - an unofficial plugin-based client mod for pvzhtbot.com (collection tracker, deck buildability, hero reference, and more). Not affiliated with pvzhtbot.com; using it violates the site's Terms of Service.
 // @author       Keira
 // @match        https://pvzhtbot.com/*
@@ -12,7 +12,7 @@
 // @updateURL    https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/pvzhtbot-mod.meta.js
 // @downloadURL  https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/pvzhtbot-mod.user.js
 // ==/UserScript==
-var __PVZHTBOT_MOD_BUILD_ID__ = "1793754470066";
+var __PVZHTBOT_MOD_BUILD_ID__ = "1793754737966";
 (() => {
   // src/api/site-api.js
   var PvzhtbotApiError = class extends Error {
@@ -598,8 +598,8 @@ var __PVZHTBOT_MOD_BUILD_ID__ = "1793754470066";
   });
 
   // src/ui/settings-panel.js
-  var PANEL_ID = "pvzhtbot-mod-settings-panel";
-  var BACKDROP_ID = "pvzhtbot-mod-settings-backdrop";
+  var PANEL_ID = "greenhouse-settings-panel";
+  var BACKDROP_ID = "greenhouse-settings-backdrop";
   var P = `#${PANEL_ID}`;
   var STYLES = `
 #${BACKDROP_ID} { position: fixed; inset: 0; z-index: 999998; background: rgba(0,0,0,0.5); }
@@ -915,7 +915,7 @@ ${P} .gh-foot a { color: #9a9a9a; }
 
   // src/ui/dashboard-card.js
   var GRID_SELECTOR = ".user-dashboard-grid";
-  var CARD_MARKER_ATTR = "data-pvzhtbot-mod-card";
+  var CARD_MARKER_ATTR = "data-greenhouse-card";
   function buildCard(onOpenSettings) {
     const card = document.createElement("a");
     card.href = "#";
@@ -986,6 +986,104 @@ ${P} .gh-foot a { color: #9a9a9a; }
     };
   }
 
+  // src/ui/toast.js
+  var STACK_ID = "greenhouse-toast-stack";
+  var STYLE_ID = "greenhouse-toast-styles";
+  var KIND_COLORS = {
+    info: THEME.border,
+    success: THEME.accentBorder,
+    warn: THEME.warnBorder,
+    error: THEME.dangerBorder
+  };
+  var KIND_TITLE = {
+    info: THEME.text,
+    success: THEME.accent,
+    warn: THEME.warn,
+    error: THEME.danger
+  };
+  var STYLES2 = `
+#${STACK_ID} {
+  position: fixed; left: 16px; bottom: 16px; z-index: 1000000;
+  display: flex; flex-direction: column-reverse; gap: 8px;
+  max-width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+#${STACK_ID} .gh-toast {
+  pointer-events: auto;
+  background: ${THEME.bg}; color: ${THEME.text};
+  border: 1px solid ${THEME.border}; border-left-width: 4px;
+  border-radius: 8px; padding: 10px 12px;
+  font: ${THEME.font}; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+#${STACK_ID} .gh-toast-title { font-weight: 600; margin-bottom: 2px; }
+#${STACK_ID} .gh-toast-body { color: #ccc; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+#${STACK_ID} .gh-toast-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; flex-wrap: wrap; }
+#${STACK_ID} .gh-toast-actions button {
+  border: none; border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 12px;
+  background: #262626; color: #ddd;
+}
+#${STACK_ID} .gh-toast-actions button:first-child { background: ${THEME.accentStrong}; color: #fff; }
+`;
+  function ensureStack() {
+    if (!document.getElementById(STYLE_ID)) {
+      const style = document.createElement("style");
+      style.id = STYLE_ID;
+      style.textContent = STYLES2;
+      document.head.appendChild(style);
+    }
+    let stack = document.getElementById(STACK_ID);
+    if (!stack) {
+      stack = document.createElement("div");
+      stack.id = STACK_ID;
+      document.body.appendChild(stack);
+    }
+    return stack;
+  }
+  function showToast({ title, body = "", kind = "info", timeoutMs = 6e3, actions = [] } = {}) {
+    const stack = ensureStack();
+    const el2 = document.createElement("div");
+    el2.className = "gh-toast";
+    el2.style.borderLeftColor = KIND_COLORS[kind] || KIND_COLORS.info;
+    if (title) {
+      const t = document.createElement("div");
+      t.className = "gh-toast-title";
+      t.style.color = KIND_TITLE[kind] || KIND_TITLE.info;
+      t.textContent = title;
+      el2.appendChild(t);
+    }
+    if (body) {
+      const b = document.createElement("div");
+      b.className = "gh-toast-body";
+      b.textContent = body;
+      el2.appendChild(b);
+    }
+    let timer = null;
+    const close = () => {
+      clearTimeout(timer);
+      el2.remove();
+    };
+    const allActions = [...actions, { label: "Dismiss", onClick: () => {
+    } }];
+    const row = document.createElement("div");
+    row.className = "gh-toast-actions";
+    for (const action of allActions) {
+      const btn = document.createElement("button");
+      btn.textContent = action.label;
+      btn.addEventListener("click", () => {
+        try {
+          action.onClick?.();
+        } finally {
+          if (action.keepOpen !== true) close();
+        }
+      });
+      row.appendChild(btn);
+    }
+    el2.appendChild(row);
+    stack.appendChild(el2);
+    if (timeoutMs > 0) timer = setTimeout(close, timeoutMs);
+    return { close };
+  }
+
   // src/core/define-plugin.js
   var OPTION_TYPES = /* @__PURE__ */ new Set(["boolean", "number", "string", "select"]);
   var ID_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
@@ -1018,8 +1116,8 @@ ${P} .gh-foot a { color: #9a9a9a; }
   }
 
   // src/ui/modal.js
-  var STYLE_ID = "greenhouse-modal-styles";
-  var STYLES2 = `
+  var STYLE_ID2 = "greenhouse-modal-styles";
+  var STYLES3 = `
 .gh-modal-backdrop { position: fixed; inset: 0; z-index: 999990; background: rgba(0,0,0,0.55); }
 .gh-modal {
   position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 999991;
@@ -1052,10 +1150,10 @@ ${P} .gh-foot a { color: #9a9a9a; }
 .gh-tabs button[aria-pressed="true"] { border-color: ${THEME.accentBorder}; color: ${THEME.accent}; }
 `;
   function ensureStyles() {
-    if (document.getElementById(STYLE_ID)) return;
+    if (document.getElementById(STYLE_ID2)) return;
     const style = document.createElement("style");
-    style.id = STYLE_ID;
-    style.textContent = STYLES2;
+    style.id = STYLE_ID2;
+    style.textContent = STYLES3;
     document.head.appendChild(style);
   }
   function createModal({ id, title, subtitle = "", width = 640, onOpen, onClose } = {}) {
@@ -1231,8 +1329,8 @@ ${P} .gh-foot a { color: #9a9a9a; }
   }
 
   // src/plugins/card-quick-search/index.js
-  var STYLE_ID2 = "greenhouse-cqs-styles";
-  var STYLES3 = `
+  var STYLE_ID3 = "greenhouse-cqs-styles";
+  var STYLES4 = `
 #greenhouse-modal-card-quick-search .gh-modal-body { padding-top: 10px; }
 .gh-cqs-hint { font-size: 11px; margin: 6px 0 8px; }
 .gh-cqs-list { display: flex; flex-direction: column; gap: 2px; }
@@ -1339,10 +1437,10 @@ ${P} .gh-foot a { color: #9a9a9a; }
     },
     async init(ctx) {
       const { api, options, log: log2 } = ctx;
-      if (!document.getElementById(STYLE_ID2)) {
+      if (!document.getElementById(STYLE_ID3)) {
         const style = document.createElement("style");
-        style.id = STYLE_ID2;
-        style.textContent = STYLES3;
+        style.id = STYLE_ID3;
+        style.textContent = STYLES4;
         document.head.appendChild(style);
       }
       let index = null;
@@ -1528,8 +1626,8 @@ ${P} .gh-foot a { color: #9a9a9a; }
   var SUMMARY_SELECTOR = ".card-manager-summary";
   var CONTENT_SELECTOR = ".card-manager-content";
   var MARKER_ATTR = "data-pvzhtbot-collection-completion";
-  var STYLE_ID3 = "pvzhtbot-collection-completion-styles";
-  var STYLES4 = `
+  var STYLE_ID4 = "pvzhtbot-collection-completion-styles";
+  var STYLES5 = `
 .pvzhtbot-cc-details {
   background: #14161a;
   border: 1px solid #262626;
@@ -1583,10 +1681,10 @@ ${P} .gh-foot a { color: #9a9a9a; }
 }
 `;
   function injectStylesOnce2() {
-    if (document.getElementById(STYLE_ID3)) return;
+    if (document.getElementById(STYLE_ID4)) return;
     const style = document.createElement("style");
-    style.id = STYLE_ID3;
-    style.textContent = STYLES4;
+    style.id = STYLE_ID4;
+    style.textContent = STYLES5;
     document.head.appendChild(style);
   }
   function isCardManagerPage() {
@@ -1979,104 +2077,6 @@ ${P} .gh-foot a { color: #9a9a9a; }
     }
   });
   var collection_completion_default = collectionCompletionPlugin;
-
-  // src/ui/toast.js
-  var STACK_ID = "greenhouse-toast-stack";
-  var STYLE_ID4 = "greenhouse-toast-styles";
-  var KIND_COLORS = {
-    info: THEME.border,
-    success: THEME.accentBorder,
-    warn: THEME.warnBorder,
-    error: THEME.dangerBorder
-  };
-  var KIND_TITLE = {
-    info: THEME.text,
-    success: THEME.accent,
-    warn: THEME.warn,
-    error: THEME.danger
-  };
-  var STYLES5 = `
-#${STACK_ID} {
-  position: fixed; left: 16px; bottom: 16px; z-index: 1000000;
-  display: flex; flex-direction: column-reverse; gap: 8px;
-  max-width: min(360px, calc(100vw - 32px));
-  pointer-events: none;
-}
-#${STACK_ID} .gh-toast {
-  pointer-events: auto;
-  background: ${THEME.bg}; color: ${THEME.text};
-  border: 1px solid ${THEME.border}; border-left-width: 4px;
-  border-radius: 8px; padding: 10px 12px;
-  font: ${THEME.font}; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-}
-#${STACK_ID} .gh-toast-title { font-weight: 600; margin-bottom: 2px; }
-#${STACK_ID} .gh-toast-body { color: #ccc; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
-#${STACK_ID} .gh-toast-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; flex-wrap: wrap; }
-#${STACK_ID} .gh-toast-actions button {
-  border: none; border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 12px;
-  background: #262626; color: #ddd;
-}
-#${STACK_ID} .gh-toast-actions button:first-child { background: ${THEME.accentStrong}; color: #fff; }
-`;
-  function ensureStack() {
-    if (!document.getElementById(STYLE_ID4)) {
-      const style = document.createElement("style");
-      style.id = STYLE_ID4;
-      style.textContent = STYLES5;
-      document.head.appendChild(style);
-    }
-    let stack = document.getElementById(STACK_ID);
-    if (!stack) {
-      stack = document.createElement("div");
-      stack.id = STACK_ID;
-      document.body.appendChild(stack);
-    }
-    return stack;
-  }
-  function showToast({ title, body = "", kind = "info", timeoutMs = 6e3, actions = [] } = {}) {
-    const stack = ensureStack();
-    const el2 = document.createElement("div");
-    el2.className = "gh-toast";
-    el2.style.borderLeftColor = KIND_COLORS[kind] || KIND_COLORS.info;
-    if (title) {
-      const t = document.createElement("div");
-      t.className = "gh-toast-title";
-      t.style.color = KIND_TITLE[kind] || KIND_TITLE.info;
-      t.textContent = title;
-      el2.appendChild(t);
-    }
-    if (body) {
-      const b = document.createElement("div");
-      b.className = "gh-toast-body";
-      b.textContent = body;
-      el2.appendChild(b);
-    }
-    let timer = null;
-    const close = () => {
-      clearTimeout(timer);
-      el2.remove();
-    };
-    const allActions = [...actions, { label: "Dismiss", onClick: () => {
-    } }];
-    const row = document.createElement("div");
-    row.className = "gh-toast-actions";
-    for (const action of allActions) {
-      const btn = document.createElement("button");
-      btn.textContent = action.label;
-      btn.addEventListener("click", () => {
-        try {
-          action.onClick?.();
-        } finally {
-          if (action.keepOpen !== true) close();
-        }
-      });
-      row.appendChild(btn);
-    }
-    el2.appendChild(row);
-    stack.appendChild(el2);
-    if (timeoutMs > 0) timer = setTimeout(close, timeoutMs);
-    return { close };
-  }
 
   // src/plugins/crash-handler/index.js
   var STATE_KEY = "crashHandler";
@@ -3276,8 +3276,13 @@ ${P} .gh-foot a { color: #9a9a9a; }
     if (!running) return;
     try {
       const latest = await fetchLatestBuildId();
-      if (latest && latest !== running && !wasDismissed(latest)) {
+      const latestN = Number(latest);
+      const runningN = Number(running);
+      const isNewer = Number.isFinite(latestN) && Number.isFinite(runningN) && latestN > runningN;
+      if (isNewer && !wasDismissed(latest)) {
         showBanner(latest, context.log);
+      } else if (!isNewer) {
+        document.getElementById(BANNER_ID)?.remove();
       }
     } catch (err) {
       context.log(`check failed: ${err.message}`, "error");
@@ -3340,7 +3345,40 @@ ${P} .gh-foot a { color: #9a9a9a; }
       });
     }
     log(`ready - ${pluginManager.list().filter((p) => p.active).length} plugin(s) running`);
+    warnIfLegacyScriptRunning();
     return { api, backend, settings, pluginManager };
+  }
+  var LEGACY_PANEL_ID = "pvzhtbot-mod-settings-panel";
+  function warnIfLegacyScriptRunning() {
+    setTimeout(() => {
+      if (!document.getElementById(LEGACY_PANEL_ID)) return;
+      log('the old "PvZHTBot Mod" script is also running - delete it in Tampermonkey', "error");
+      let dismissed = false;
+      try {
+        dismissed = sessionStorage.getItem("greenhouse-legacy-warned") === "1";
+      } catch {
+      }
+      if (dismissed) return;
+      showToast({
+        kind: "warn",
+        title: 'Old "PvZHTBot Mod" is still installed',
+        body: `${BRAND.name} replaced it, but Tampermonkey kept the old script because it was renamed. Both are running, which causes stale notices and duplicate/missing cards.
+
+Open the Tampermonkey dashboard and delete "PvZHTBot Mod" (keep "Greenhouse").`,
+        timeoutMs: 0,
+        actions: [
+          {
+            label: "Got it",
+            onClick: () => {
+              try {
+                sessionStorage.setItem("greenhouse-legacy-warned", "1");
+              } catch {
+              }
+            }
+          }
+        ]
+      });
+    }, 3e3);
   }
   var pageWindow = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
   if (document.documentElement.hasAttribute(LOADED_ATTR)) {

@@ -9,8 +9,8 @@
 
 import { BRAND, THEME } from '../core/brand.js';
 
-const PANEL_ID = 'pvzhtbot-mod-settings-panel';
-const BACKDROP_ID = 'pvzhtbot-mod-settings-backdrop';
+const PANEL_ID = 'greenhouse-settings-panel';
+const BACKDROP_ID = 'greenhouse-settings-backdrop';
 const P = `#${PANEL_ID}`;
 
 const STYLES = `

@@ -16,6 +16,7 @@ import { BRAND } from './brand.js';
 import { createSettingsPanel } from '../ui/settings-panel.js';
 import { mountDashboardCard } from '../ui/dashboard-card.js';
 import { startDevReloadWatcher } from './dev-reload.js';
+import { showToast } from '../ui/toast.js';
 import discoveredPlugins from 'greenhouse:plugins';
 
 // Shared across every userscript sandbox on the page (it's on the DOM),
@@ -68,7 +69,52 @@ async function boot() {
   }
 
   log(`ready - ${pluginManager.list().filter((p) => p.active).length} plugin(s) running`);
+  warnIfLegacyScriptRunning();
   return { api, backend, settings, pluginManager };
+}
+
+// The pre-rename "PvZHTBot Mod" (<= 0.2.0) always creates a hidden
+// #pvzhtbot-mod-settings-panel at boot. Greenhouse no longer uses that id,
+// so if it exists, the old script is ALSO installed and running - which
+// happens because Tampermonkey treats a renamed script as a new one
+// instead of replacing it (seen live 2026-11-04). It predates the
+// double-load guard, so tell the user to remove it. Checked after a delay
+// since either script may run first.
+const LEGACY_PANEL_ID = 'pvzhtbot-mod-settings-panel';
+
+function warnIfLegacyScriptRunning() {
+  setTimeout(() => {
+    if (!document.getElementById(LEGACY_PANEL_ID)) return;
+    log('the old "PvZHTBot Mod" script is also running - delete it in Tampermonkey', 'error');
+    let dismissed = false;
+    try {
+      dismissed = sessionStorage.getItem('greenhouse-legacy-warned') === '1';
+    } catch {
+      // ignore
+    }
+    if (dismissed) return;
+    showToast({
+      kind: 'warn',
+      title: 'Old "PvZHTBot Mod" is still installed',
+      body:
+        `${BRAND.name} replaced it, but Tampermonkey kept the old script because it was renamed. ` +
+        'Both are running, which causes stale notices and duplicate/missing cards.\n\n' +
+        'Open the Tampermonkey dashboard and delete "PvZHTBot Mod" (keep "Greenhouse").',
+      timeoutMs: 0,
+      actions: [
+        {
+          label: 'Got it',
+          onClick: () => {
+            try {
+              sessionStorage.setItem('greenhouse-legacy-warned', '1');
+            } catch {
+              // ignore
+            }
+          },
+        },
+      ],
+    });
+  }, 3000);
 }
 
 const pageWindow = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
