@@ -19,6 +19,7 @@
 // so any write to user-cards/ - whether from this plugin, another
 // plugin, or the site's own Card Manager Save/Delete buttons - triggers
 // an immediate recompute, no page reload required.
+import { definePlugin } from '../../core/define-plugin.js';
 import { onCollectionChanged } from '../../core/collection-watcher.js';
 
 const SUMMARY_SELECTOR = '.card-manager-summary';
@@ -578,7 +579,7 @@ function buildDetailsPanel(result) {
   return details;
 }
 
-const collectionCompletionPlugin = {
+const collectionCompletionPlugin = definePlugin({
   id: 'collection-completion',
   name: 'Collection Completion Tracker',
   description: 'Shows % of normal cards owned and lists what\'s missing, on the Card Manager page. Updates live when you add/remove/edit cards, no refresh needed.',
@@ -616,7 +617,7 @@ const collectionCompletionPlugin = {
       } catch (err) {
         valueEl.textContent = 'error';
         valueEl.className = 'pvzhtbot-cc-error';
-        context.log(`[collection-completion] failed to compute: ${err.message}`, 'error');
+        context.log(`failed to compute: ${err.message}`, 'error');
       }
     }
 
@@ -651,6 +652,7 @@ const collectionCompletionPlugin = {
       injectedDetails?.remove();
     };
   },
-};
+});
 
+export default collectionCompletionPlugin;
 export { collectionCompletionPlugin };

@@ -33,10 +33,27 @@ capture) + a live, driven, net-zero card-quantity edit via
 | GET | `/decklists/` | sent w/ session, likely public | CONFIRMED | full public community deck list, bare JSON array, 133 entries observed |
 | GET | `/decklist-count/` | sent w/ session, likely public | CONFIRMED | `{"count": N}` |
 | GET | `/heroinfo/` | sent w/ session, likely public | CONFIRMED | `{"count": N, "results": [...]}` — paginated-style wrapper (differs from `cardinfo/`'s bare array), 22 hero cards observed |
+| GET | `/legacy-decklists/` | sent w/ session, likely public | CONFIRMED 2026-11-03 | bare array (190 observed), `decklists/` shape + `inspiration`/`optimization`/`suggested_date`/`updated_date`/`deck_doc`; read by `/legacydecks` |
+| GET | `/legacy-decklist-count/` | likely public | CONFIRMED 2026-11-03 (seen, not inspected) | count for `/legacydecks` |
+| GET | `/public-decks/` | sent w/ session | CONFIRMED 2026-11-03 | `{success, decks: [...], count}` (90 observed) — public user-made decks, read by `/publicdecks` |
+| GET | `/public-user-decks-count/` | likely public | CONFIRMED 2026-11-03 (seen, not inspected) | count for `/publicdecks` |
+| GET | `/keeporscrap/` | likely public | CONFIRMED 2026-11-03 | bare array, one entry per side/class + one `Intro/Explanation` entry: `{tierid, side, card_class, image, reasoning, creator, faq}`. `reasoning` = lines starting `Craft:`/`Use:`/`Hold:` (sometimes `Keep:`)/`Usable:`/`Niche:` naming **bold** card names (highlights only; full tier list is the image). Hand-written: card names contain typos |
+| GET | `/keeporscrap/count/` | likely public | CONFIRMED 2026-11-03 (seen, not inspected) | |
+| GET | `/site-updates/` | likely public | CONFIRMED 2026-11-03 | bare array (53 observed) of `{id, title, page_url, content, category, published, ...}`; read by `/updates` |
+| GET | `/servers/`, `/servers/count/` | likely public | CONFIRMED 2026-11-03 (seen, not inspected) | read by `/servers` (PvZH Discord server directory) |
+| GET | `/deckbuilders/count/` | likely public | CONFIRMED 2026-11-03 (seen, not inspected) | read by `/deckbuilders` (48 observed) |
 | GET | `/profiles/` | sent w/ session, likely public | CONFIRMED | `{"success": true, "profiles": [...]}` — every public profile (35 observed), same shape as `profile/<username>/`'s `profile` object |
 | GET | `/profiles/count/` | sent w/ session, likely public | CONFIRMED | `{"count": N}` — count of public profiles |
 | GET | `/user-decks/` | yes | INFERRED | observed firing from the personal decks page; not yet inspected for response shape |
 | PATCH/PUT | `/profile/me/` (or similar) | yes | UNKNOWN | profile-edit write (Display Name/Profile URL/Bio/Public toggle) — UI confirmed, exact endpoint/method NOT confirmed; deliberately not triggered (see docs/profiles.md) |
+
+## Data-format notes found 2026-11-03
+
+- `cardinfo/` `side` values are now `"Plants"` / `"Zombie"` (Plants was singular `"Plant"` at first capture).
+- `cardinfo/` `stats` is **positional**: cost, then strength, then health. The emoji icon in each
+  slot varies: the strength slot can be Bullseye/Frenzy/Strikethrough/AntiHero/Deadly/DoubleStrike/Overshoot,
+  and the health slot can be Armored/Untrickable/Special/healthstrength. Tricks/environments have only the cost token.
+- Trait text is icon + label: `<:Bullseye:id>__Bullseye__`.
 
 ## Authentication summary
 See `docs/authentication.md` for full detail. Short version: log in via

@@ -21,6 +21,9 @@
 // nothing else. No page reload or install action is performed
 // automatically - the user always clicks through to actually update.
 
+import { definePlugin } from '../../core/define-plugin.js';
+import { BRAND } from '../../core/brand.js';
+
 const BUILD_ID_URL =
   'https://raw.githubusercontent.com/KeiraOMG0/pvzhtbot-mod/master/userscript/dist/build-id.txt';
 const INSTALL_URL =
@@ -88,12 +91,12 @@ function showBanner(latestBuildId, log) {
 
   const title = document.createElement('div');
   title.className = 'pvzhtbot-update-title';
-  title.textContent = 'PvZHTBot Mod update available';
+  title.textContent = `${BRAND.name} update available`;
   banner.appendChild(title);
 
   const body = document.createElement('div');
   body.className = 'pvzhtbot-update-body';
-  body.textContent = 'A newer build is published on GitHub than the one currently running.';
+  body.textContent = `A newer version is out. "Update now" opens Tampermonkey's update screen - click Update there, then refresh this page.`;
   banner.appendChild(body);
 
   const actions = document.createElement('div');
@@ -113,7 +116,7 @@ function showBanner(latestBuildId, log) {
 
   const viewBtn = document.createElement('button');
   viewBtn.className = 'pvzhtbot-update-view';
-  viewBtn.textContent = 'View on GitHub';
+  viewBtn.textContent = 'Update now';
   viewBtn.addEventListener('click', () => {
     window.open(INSTALL_URL, '_blank', 'noopener,noreferrer');
   });
@@ -123,7 +126,7 @@ function showBanner(latestBuildId, log) {
   banner.appendChild(actions);
 
   document.body.appendChild(banner);
-  log('[update-checker] showing update banner');
+  log('showing update banner');
 }
 
 function wasDismissed(buildId) {
@@ -152,7 +155,8 @@ async function isRunningAgainstDevServer() {
 }
 
 async function checkOnce(context) {
-  if (context.isDevMode?.() || (await isRunningAgainstDevServer())) {
+  // Release builds never probe localhost (see __GREENHOUSE_DEV__ in build.js).
+  if (__GREENHOUSE_DEV__ && (context.isDevMode?.() || (await isRunningAgainstDevServer()))) {
     document.getElementById(BANNER_ID)?.remove();
     return;
   }
@@ -168,11 +172,11 @@ async function checkOnce(context) {
   } catch (err) {
     // Network hiccup or GitHub rate limit - not worth surfacing to the
     // user, this is a best-effort background check.
-    context.log(`[update-checker] check failed: ${err.message}`, 'error');
+    context.log(`check failed: ${err.message}`, 'error');
   }
 }
 
-const updateCheckerPlugin = {
+const updateCheckerPlugin = definePlugin({
   id: 'update-checker',
   name: 'Update Checker',
   description:
@@ -189,6 +193,7 @@ const updateCheckerPlugin = {
       document.getElementById(BANNER_ID)?.remove();
     };
   },
-};
+});
 
+export default updateCheckerPlugin;
 export { updateCheckerPlugin };

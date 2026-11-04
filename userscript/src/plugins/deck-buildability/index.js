@@ -13,6 +13,8 @@
 // missing and how many. Fully derived from GET /decklists/ +
 // GET /user-cards/ (both confirmed, read-only). Never writes anything.
 
+import { definePlugin } from '../../core/define-plugin.js';
+
 const MARKER_ATTR = 'data-pvzhtbot-deck-buildability-card';
 const STYLE_ID = 'pvzhtbot-deck-buildability-styles';
 const PANEL_ID = 'pvzhtbot-deck-buildability-panel';
@@ -429,7 +431,7 @@ function createPanel(api) {
   return { open };
 }
 
-const deckBuildabilityPlugin = {
+const deckBuildabilityPlugin = definePlugin({
   id: 'deck-buildability',
   name: 'Deck Buildability Helper',
   description: 'Ranks community decks by how many of their cards you own, with a click-through panel from /dashboard.',
@@ -478,6 +480,7 @@ const deckBuildabilityPlugin = {
       document.querySelector(`[${MARKER_ATTR}]`)?.remove();
     };
   },
-};
+});
 
+export default deckBuildabilityPlugin;
 export { deckBuildabilityPlugin };

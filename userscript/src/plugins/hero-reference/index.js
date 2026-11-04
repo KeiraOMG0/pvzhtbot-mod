@@ -22,6 +22,8 @@
 // plugin treats the heuristic as best-effort, not authoritative - a
 // malformed block just renders as-is rather than being hidden.
 
+import { definePlugin } from '../../core/define-plugin.js';
+
 const MARKER_ATTR = 'data-pvzhtbot-hero-reference-card';
 const STYLE_ID = 'pvzhtbot-hero-reference-styles';
 const PANEL_ID = 'pvzhtbot-hero-reference-panel';
@@ -281,7 +283,7 @@ function createPanel(api) {
   return { open };
 }
 
-const heroReferencePlugin = {
+const heroReferencePlugin = definePlugin({
   id: 'hero-reference',
   name: 'Hero Reference',
   description: 'Searchable hero + superpower lookup from /dashboard, no need to visit the Hero Info page.',
@@ -330,6 +332,7 @@ const heroReferencePlugin = {
       document.querySelector(`[${MARKER_ATTR}]`)?.remove();
     };
   },
-};
+});
 
+export default heroReferencePlugin;
 export { heroReferencePlugin };

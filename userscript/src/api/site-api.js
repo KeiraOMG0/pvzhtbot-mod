@@ -192,9 +192,36 @@ class PvzhtbotApi {
   // only INFERRED from bundled-JS string matches, never independently
   // triggered/confirmed. See site-research/docs/decklists.md.
 
+  /** CONFIRMED 2026-11-03: GET /legacy-decklists/ - bare array, decklists/ shape + inspiration/optimization/dates/deck_doc. Read by /legacydecks. */
+  async getLegacyDecklists() {
+    return this._get('/legacy-decklists/');
+  }
+
+  /** CONFIRMED 2026-11-03: GET /public-decks/ - {success, decks: [...], count}. Public user-made decks, read by /publicdecks. */
+  async getPublicUserDecks() {
+    return this._get('/public-decks/');
+  }
+
   // ---- Heroes ----
   async getAllHeroInfo() {
     return this._get('/heroinfo/');
+  }
+
+  // ---- Guides / misc ----
+  /**
+   * CONFIRMED 2026-11-03: GET /keeporscrap/ - bare array, one entry per
+   * side/class (+ one "Intro/Explanation" entry): {tierid, side,
+   * card_class, image, reasoning, creator, faq}. `reasoning` is text with
+   * `Craft:`/`Use:`/`Hold:`/`Usable:`/`Niche:` section lines and
+   * **bold** card names. Read by /keeporscrap.
+   */
+  async getKeepOrScrap() {
+    return this._get('/keeporscrap/');
+  }
+
+  /** CONFIRMED 2026-11-03: GET /site-updates/ - bare array of {id, title, page_url, content, category, published, ...}. Read by /updates. */
+  async getSiteUpdates() {
+    return this._get('/site-updates/');
   }
 }
 

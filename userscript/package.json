@@ -1,8 +1,8 @@
 {
   "name": "pvzhtbot-mod",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "Client-side mod for pvzhtbot.com — core loader, plugin manager, settings UI (no feature plugins yet)",
+  "description": "Greenhouse - unofficial plugin-based client mod for pvzhtbot.com",
   "type": "module",
   "scripts": {
     "build": "node build.js",

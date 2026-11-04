@@ -63,6 +63,28 @@ class SettingsStore {
     plugins[pluginId] = Boolean(enabled);
     this.set('plugins', plugins);
   }
+
+  // Per-plugin option values, stored as { pluginOptions: { [id]: { [key]: value } } }.
+  // Only values the user actually changed are stored; defaults live in
+  // the plugin's own `options` schema so changing a default in code
+  // reaches everyone who never touched that setting.
+  getPluginOption(pluginId, key, defaultValue) {
+    const all = this.get('pluginOptions', {});
+    const mine = all[pluginId] || {};
+    return key in mine ? mine[key] : defaultValue;
+  }
+
+  setPluginOption(pluginId, key, value) {
+    const all = this.get('pluginOptions', {});
+    all[pluginId] = { ...(all[pluginId] || {}), [key]: value };
+    this.set('pluginOptions', all);
+  }
+
+  resetPluginOptions(pluginId) {
+    const all = this.get('pluginOptions', {});
+    delete all[pluginId];
+    this.set('pluginOptions', all);
+  }
 }
 
 export { SettingsStore };

@@ -1,89 +1,109 @@
 # src/userplugins/
 
-Drop your own plugins here. Each plugin gets its own folder:
+Your own Greenhouse plugins go here. **Each folder is picked up
+automatically at build time.** There's no manifest or loader file to
+edit. (Built-ins in `src/plugins/` work exactly the same way.)
 
 ```
 src/userplugins/
-├── manifest.js          <- registers your plugins with the loader (edit this)
-├── README.md             <- this file
-└── my-plugin/
-    ├── index.js          <- required: exports the plugin object
-    ├── styles.css         <- optional: anything else your plugin needs
-    └── some-helper.js     <- optional: split code however you like
+├── README.md               <- this file
+├── my-plugin/
+│   ├── index.js            <- required: `export default definePlugin({...})`
+│   └── helpers.js          <- optional: split code however you like
+└── _wip-thing/             <- folders starting with _ or . are skipped
 ```
+
+Folder name = plugin `id` (the loader warns if they differ). In
+`npm run dev`, adding or removing a folder triggers a rebuild and your
+open tab reloads.
 
 ## Minimal plugin
 
-`src/userplugins/my-plugin/index.js`:
-
 ```js
-export const myPlugin = {
-  id: 'my-plugin',                 // unique, kebab-case
+import { definePlugin } from '../../core/define-plugin.js';
+
+export default definePlugin({
+  id: 'my-plugin',                 // unique, kebab-case, same as the folder
   name: 'My Plugin',               // shown in the settings panel
   description: 'One line describing what it does.',
-  defaultEnabled: false,           // starts off unless the user enables it
+  authors: ['you'],
+  defaultEnabled: false,
 
-  async init(context) {
-    // context = { api, backend, settings, log }
-    // context.api is the confirmed Site API wrapper - see
-    // ../api/site-api.js for every method available (read-only calls
-    // like getMyCards()/getAllCardInfo()/getAllDecklists(), plus the one
-    // confirmed write, setCardQuantity(), and addCard()/addCardsWithRateLimit()).
-    //
-    // Do whatever your plugin does here - inject DOM, read data, etc.
-
+  async init(ctx) {
+    // ... inject DOM, read data, etc.
     return () => {
-      // optional teardown, called when the plugin is disabled
+      // teardown: called when the plugin is disabled. Undo everything.
     };
   },
-};
+});
 ```
 
-Then register it in `src/userplugins/manifest.js`:
+## What `ctx` gives you
+
+| | |
+|---|---|
+| `ctx.api` | The site API wrapper (`../api/site-api.js`) — confirmed endpoints only: `getMyCards()`, `getAllCardInfo()`, `getAllDecklists()`, `getKeepOrScrap()`, ... |
+| `ctx.log(msg, level?)` | Console log, already prefixed with your plugin id. |
+| `ctx.options` | Your plugin's settings (below). |
+| `ctx.settings` | The raw global settings store. Prefer `ctx.options`. |
+| `ctx.plugins` | `list()`, `isEnabled(id)`, `setEnabled(id, on)`, `on(event, cb)` — mostly for core plugins. |
+| `ctx.isDevMode()` | True when running from the local dev server. |
+
+## Settings (`options`)
+
+Declare them and the settings panel renders them under your plugin's ⚙
+button automatically:
 
 ```js
-import { myPlugin } from './my-plugin/index.js';
-export const userPlugins = [myPlugin];
+options: {
+  showThing: { type: 'boolean', label: 'Show the thing', default: true },
+  limit:     { type: 'number',  label: 'Max rows', default: 50, min: 1, max: 500 },
+  title:     { type: 'string',  label: 'Title', default: 'Hi' },
+  mode:      { type: 'select',  label: 'Mode', default: 'a',
+               choices: [{ label: 'Mode A', value: 'a' }, { label: 'Mode B', value: 'b' }] },
+  heavy:     { type: 'boolean', label: 'Heavy mode', default: false,
+               description: 'Shown under the label.', restartNeeded: true },
+},
 ```
 
-Rebuild (`npm run build` from `userscript/`, or keep `npm run dev` running
-during development) and it shows up in the mod's settings panel like any
-built-in plugin.
+Read them with `ctx.options.get('limit')` or `ctx.options.store.limit`.
+Write with `ctx.options.set(...)`. React live with
+`ctx.options.onChange((key, value) => ...)`, which returns an
+unsubscribe function. `restartNeeded: true` shows the "refresh to apply"
+notice when the user changes it.
 
-## One plugin depending on another as a base
+## Other fields
 
-If your plugin builds on another plugin's functionality, import from that
-plugin's folder directly - it's just a normal ES module:
+- `dependencies: ['other-id']` — enabling yours enables those first;
+  disabling one of them disables yours.
+- `required: true` — always on, no toggle (core plugins only, please).
+- `priority: 0` — higher starts first (crash-handler is 100).
+- `tags: ['cards']` — searchable in the settings panel.
 
-```js
-// src/userplugins/my-extension/index.js
-import { someHelper } from '../plugins/collection-completion/index.js';
-// or, for another userplugin:
-import { sharedThing } from '../shared-base-plugin/index.js';
-```
+## Shared helpers
 
-Only import what a plugin explicitly exports for reuse (most built-in
-plugins currently only export their plugin object, not internal helpers -
-if you need something exposed for reuse, that's worth asking for rather
-than reaching into a plugin's private internals).
+- `../../ui/dashboard-card.js` → `addDashboardTile({ id, label, action, onClick })`
+  adds a site-styled card to `/dashboard` and returns a teardown function.
+- `../../ui/modal.js` → `createModal({ id, title, width })` gives a
+  Greenhouse-styled popup with `.body`, `.open()`, `.close()`, and Esc/backdrop close.
+- `../../ui/toast.js` → `showToast({ title, body, kind, actions })`.
+- `../../lib/card-text.js` → `cleanEmoji()` (Discord emoji tags → words),
+  `parseStats()`, `normName()`, `createCardMatcher()` (typo-tolerant card-name lookup).
+- `../../core/collection-watcher.js` → `onCollectionChanged(cb)` fires after
+  any card add/edit/delete, from the site's own UI or a plugin.
+- `../../core/brand.js` → `THEME` colors so your UI matches.
 
-## What NOT to do
+## Crashes
 
-- Don't call unconfirmed/inferred API endpoints without checking
-  `../../../site-research/docs/api.md` first for their actual status.
-- Don't perform bulk writes (loops of add/remove calls) without your own
-  explicit rate limiting - see `addCardsWithRateLimit()` in the API
-  wrapper for the pattern this project uses.
-- Don't assume `context.backend` is configured - it throws a clear error
-  if called with no backend URL set (see `../api/backend-client.js`).
-  No backend exists yet; this is a seam for future use, not something
-  currently available.
+You don't need your own try/catch around `init`. If it throws, the
+Crash Handler shows the user a toast. If it keeps failing on every page
+load, or freezes the page while starting, it gets auto-disabled. In the
+console, `__greenhouse.crashLog()` shows recent crashes with stacks.
 
-## Built-in plugins that are always on
+## Rules
 
-`update-checker` (in `src/plugins/update-checker/`) is a required,
-always-enabled built-in plugin — it doesn't appear as a toggle in the
-settings panel, it just runs. See its own file for what it does. Your
-user plugins are never forced on like this; `defaultEnabled` is only ever
-a *default*, and the user can toggle any user/built-in plugin except
-`update-checker` off from settings.
+- Only call endpoints marked **CONFIRMED** in `../../../site-research/docs/api.md`.
+  New endpoint? Observe the site calling it first, then document it.
+- No bulk writes without explicit rate limiting (`addCardsWithRateLimit()`).
+- Your teardown should remove everything you added (DOM, listeners, intervals).
+- Retiring a plugin? Move it to `../../archive/`. See that folder's README.
